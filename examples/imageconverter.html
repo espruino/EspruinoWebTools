@@ -5,6 +5,8 @@
    <script src="../heatshrink.js"></script>
    <script src="../imageconverter.js"></script>
 
+   <p>An online image converter for Espruino...</p>
+
    <input type="file" id="fileLoader"/><br/>
    <input type="checkbox" id="compression" onchange="imageLoaded()">Use Compression?</input><br/>
    Diffusion:
@@ -69,7 +71,7 @@
        ctx.putImageData(imageData,img.width,0);
 
        document.getElementById("ressize").innerHTML = imgstr.length+" Characters";
-       document.getElementById("resdata").innerHTML = imgstr;
+       document.getElementById("resdata").innerHTML = "var img = "+imgstr;
        document.getElementById("resdata").style = "width:650px;height:300px;";
      }
      function handleFileSelect(event) {

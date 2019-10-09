@@ -212,13 +212,13 @@ return c;
       str += String.fromCharCode(bitData[n]);
     var imgstr;
     if (options.output=="object") {
-      imgstr = "var img = {\n";
+      imgstr = "{\n";
       imgstr += "  width : "+options.width+", height : "+options.height+", bpp : "+bpp+",\n";
       if (transparentCol!==undefined) imgstr += "  transparent : "+transparentCol+",\n";
       imgstr += '  buffer : '+strCmd+'(atob("'+btoa(str)+'"))\n';
-      imgstr += "};\n";
+      imgstr += "}";
     } else if (options.output=="string") {
-      imgstr = strCmd+'(atob("'+btoa(str)+'"))\n';
+      imgstr = strCmd+'(atob("'+btoa(str)+'"))';
     } else {
       throw new Error("Unknown output style");
     }
@@ -240,7 +240,7 @@ return c;
       options.rgbaOut = rgba;
     var str = RGBAtoString(rgba, options);
     if (options.updateCanvas)
-      ctx.putImageData(options.rgbaOut,0,0);
+      ctx.putImageData(imageData,0,0);
     return str;
   }
 

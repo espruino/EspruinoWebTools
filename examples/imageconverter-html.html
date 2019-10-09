@@ -1,0 +1,40 @@
+<html>
+ <head>
+ </head>
+ <body>
+   <script src="../heatshrink.js"></script>
+   <script src="../imageconverter.js"></script>
+   <script src="../uart.js"></script>
+   <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+  <p>Converting HTML to an image and sending it to Espruino...</p>
+  <div style="border:1px solid black;width:130px;height:66px">
+    <div id="testdiv" style="width:128px;height:64px">
+      This is <b>some text</b><br>
+      <span style="font-size:200%">Big text</span>
+    </div>
+  </div>
+  <div id="resulthtml" style="border:1px solid red;width:130px;height:66px">
+  </div>
+  <div id="resultcode" style="overflow-wrap: break-word;"></div>
+  <button id="go">Send to Espruino</button>
+
+<script>
+  var jscode = "";
+  window.onload = function () {
+    var div = document.getElementById("testdiv");
+    html2canvas(div).then(canvas => {
+        document.getElementById("resulthtml").appendChild(canvas)
+      var str = imageconverter.canvastoString(canvas, {
+        updateCanvas:true, mode:"1bit", diffusion:"none",
+        compression:true, inverted:true/*output:"string"*/});
+      jscode = "g.drawImage("+str.trim()+");"
+      document.getElementById("resultcode").innerText = jscode;;
+    });
+  };
+  document.getElementById("go").onclick = function() {
+    UART.write("\x03\x10"+jscode+";if (g.flip) g.flip();\n");
+  };
+</script>
+ </body>
+</html>
