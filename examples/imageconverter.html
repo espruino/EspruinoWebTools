@@ -1,0 +1,88 @@
+<html>
+ <head>
+ </head>
+ <body>
+   <script src="../heatshrink.js"></script>
+   <script src="../imageconverter.js"></script>
+
+   <input type="file" id="fileLoader"/><br/>
+   <input type="checkbox" id="compression" onchange="imageLoaded()">Use Compression?</input><br/>
+   Diffusion:
+   <select id="diffusion" onchange="imageLoaded()">
+   <option value="none" selected="selected">Flat</option>
+   <option value="random1">Random small</option>
+   <option value="random2">Random large</option>
+   <option value="error">Error Diffusion</option>
+   <option value="errorrandom">Randomised Error Diffusion</option>
+   </select><br/>
+
+   Brightness:<input type="range" id="brightness" min="-255" max="255" value="0" onchange="imageLoaded()"></input><br/>
+   Colours: <select id="colorStyle" onchange="imageLoaded()">
+   <option value="1bit" selected="selected">1 bit black/white</option>
+   <option value="1bitinverted">1 bit white/black</option>
+   <option value="4bit">4 bit RGBA</option>
+   <option value="4bitmac">4 bit Mac palette</option>
+   <option value="web">8 bit Web palette</option>
+   <option value="vga">8 bit VGA palette</option>
+   </select><br/>
+   Output As: <select id="outputStyle" onchange="imageLoaded()">
+   <option value="object" selected="selected">Image Object</option>
+   <option value="string">Image String</option>
+   </select><br/>
+
+   <canvas id="canvas" style="display:none;"></canvas>
+
+   <h2>Result</h2>
+   <p><span id="ressize">...</span></p>
+   <textarea id="resdata" style="display:none;"></textarea>
+
+   <script>
+     var img;
+     function imageLoaded() {
+       if (img === undefined) return;
+       var options = {};
+       var diffusionSelect = document.getElementById("diffusion");
+       options.diffusion = diffusionSelect.options[diffusionSelect.selectedIndex].value;
+       options.compression = document.getElementById("compression").checked;
+       options.brightness = 0|document.getElementById("brightness").value;
+       var colorSelect = document.getElementById("colorStyle");
+       options.mode = colorSelect.options[colorSelect.selectedIndex].value;
+       if (options.mode=="1bitinverted") {
+         options.mode="1bit";
+         options.inverted=true;
+       }
+       var outputSelect = document.getElementById("outputStyle");
+       options.output = outputSelect.options[outputSelect.selectedIndex].value;
+
+       var canvas = document.getElementById("canvas")
+       canvas.width = img.width*2;
+       canvas.height = img.height;
+       canvas.style = "display:block;border:1px solid black;margin:8px;"
+       var ctx = canvas.getContext("2d");
+       ctx.drawImage(img,0,0);
+       var imageData = ctx.getImageData(0, 0, img.width, img.height);
+       var rgba = imageData.data;
+       options.rgbaOut = rgba;
+       options.width = img.width;
+       options.height = img.height;
+       var imgstr = imageconverter.RGBAtoString(rgba, options);
+       ctx.putImageData(imageData,img.width,0);
+
+       document.getElementById("ressize").innerHTML = imgstr.length+" Characters";
+       document.getElementById("resdata").innerHTML = imgstr;
+       document.getElementById("resdata").style = "width:650px;height:300px;";
+     }
+     function handleFileSelect(event) {
+         if (event.target.files.length != 1) return;
+         var reader = new FileReader();
+         reader.onload = function(event) {
+           img = new Image();
+           img.onload = imageLoaded;
+           img.src = event.target.result;
+         };
+         reader.readAsDataURL(event.target.files[0]);
+       };
+       document.getElementById('fileLoader').addEventListener('change', handleFileSelect, false);
+   </script>
+ </body>
+</html>

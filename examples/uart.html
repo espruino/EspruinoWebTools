@@ -1,0 +1,11 @@
+<html>
+ <head>
+ </head>
+ <body>
+  <script src="../uart.js"></script>
+  <button onclick="UART.write('LED1.set();\n');">On!</button>
+  <button onclick="UART.write('LED1.reset();\n');">Off!</button><br>
+  <button id="temp" onclick="UART.eval('E.getTemperature()',function(x) { document.getElementById('temp').innerHTML = 'Temperature '+x; })">Read Temperature</button><br>
+  <button onclick="UART.close();">Disconnect</button>
+ </body>
+</html>
