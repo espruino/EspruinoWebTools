@@ -32,8 +32,8 @@
     if (!queue.length) return;
     var q = queue.shift();
     log(3,"Executing "+JSON.stringify(q)+" from queue");
-    if (q.type=="eval") puck.eval(q.expr, q.cb);
-    else if (q.type=="write") puck.write(q.data, q.callback, q.callbackNewline);
+    if (q.type=="eval") uart.eval(q.expr, q.cb);
+    else if (q.type=="write") uart.write(q.data, q.callback, q.callbackNewline);
     else log(1,"Unknown queue item "+JSON.stringify(q));
   }
 
@@ -381,8 +381,8 @@
       return connection.write(data, onWritten);
     }
 
-    connection = connect(function(puck) {
-      if (!puck) {
+    connection = connect(function(uart) {
+      if (!uart) {
         connection = undefined;
         if (callback) callback(null);
         return;
@@ -425,15 +425,15 @@
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 3,//FIXME 1,
     /// Used internally to write log information - you can replace this with your own function
-    log : function(level, s) { if (level <= this.debug) console.log("<Espruino> "+s)},
+    log : function(level, s) { if (level <= this.debug) console.log("<UART> "+s)},
     /** Connect to a new device - this creates a separate
      connection to the one `write` and `eval` use. */
     connect : connect,
-    /// Write to Puck.js and call back when the data is written.  Creates a connection if it doesn't exist
+    /// Write to a device and call back when the data is written.  Creates a connection if it doesn't exist
     write : write,
     /// Evaluate an expression and call cb with the result. Creates a connection if it doesn't exist
     eval : evaluate,
-    /// Write the current time to the Puck
+    /// Write the current time to the device
     setTime : function(cb) {
       var d = new Date();
       var cmd = 'setTime('+(d.getTime()/1000)+');';
