@@ -3,6 +3,8 @@ EspruinoWebTools
 
 Tools/utilities for accessing Espruino devices from websites.
 
+[Read me on GitHub.io](https://espruino.github.io/EspruinoWebTools/)
+
 ## uart.js
 
 Super-simple library for accessing Bluetooth LE, Serial and USB
@@ -12,7 +14,7 @@ Espruino devices straight from the web browser.
 UART.write('LED1.set();\n');
 ```
 
-[try it out](examples/uart.html)
+[try it out](https://espruino.github.io/EspruinoWebTools/examples/uart.html)
 
 ## imageconverter.js
 
@@ -23,8 +25,8 @@ var img = document.getElementById("image");
 var jscode = imageconverter.imagetoString(img, {mode:"1bit", diffusion:"error"});
 ```
 
-[try it out](examples/imageconverter.html)
-or [simple version](examples/imageconverter.html)
+[try it out](https://espruino.github.io/EspruinoWebTools/examples/imageconverter.html)
+or [simple version](https://espruino.github.io/EspruinoWebTools/examples/imageconverter.html)
 
 ## heatshrink.js
 
@@ -46,4 +48,4 @@ you use `uart.js` now as it supports more communication types.
 Puck.write('LED1.set();\n');
 ```
 
-[try it out](examples/puck.html)
+[try it out](https://espruino.github.io/EspruinoWebTools/examples/puck.html)
