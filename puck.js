@@ -56,7 +56,7 @@ Or more advanced usage with control of the connection
 }(typeof self !== 'undefined' ? self : this, function () {
 
   if (typeof navigator == "undefined") return;
-  
+
   var isBusy;
   var queue = [];
 
@@ -277,8 +277,8 @@ Or more advanced usage with control of the connection
       }
       // wait for any received data if we have a callback...
       var maxTime = 300; // 30 sec - Max time we wait in total, even if getting data
-      var dataWaitTime = 3;
-      var maxDataTime = dataWaitTime; // 300ms - max time we wait after having received data
+      var dataWaitTime = callbackNewline ? 100/*10 sec if waiting for newline*/ : 3/*300ms*/;
+      var maxDataTime = dataWaitTime; // max time we wait after having received data
       cbTimeout = setTimeout(function timeout() {
         cbTimeout = undefined;
         if (maxTime) maxTime--;

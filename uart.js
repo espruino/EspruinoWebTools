@@ -295,8 +295,8 @@
       if (supported!==true)
         log(0, endpoint.name+" not supported, "+supported);
       var ep = document.createElement('div');
-      ep.style = 'width:300px;height:60px;background:#ccc;margin:4px 0px 4px 0px;padding:0px 0px 0px 68px;';
-      ep.innerHTML = '<div style="position:absolute;left:8px;width:48px;height:48px;background:#999;padding:6px">'+endpoint.svg+'</div>'+
+      ep.style = 'width:300px;height:60px;background:#ccc;margin:4px 0px 4px 0px;padding:0px 0px 0px 68px;cursor:pointer;';
+      ep.innerHTML = '<div style="position:absolute;left:8px;width:48px;height:48px;background:#999;padding:6px;cursor:pointer;">'+endpoint.svg+'</div>'+
                      '<div style="font-size:150%;padding-top:8px;">'+endpoint.name+'</div>'+
                      '<div style="font-size:80%;color:#666">'+endpoint.description+'</div>';
       ep.onclick = function(evt) {
@@ -354,8 +354,8 @@
       }
       // wait for any received data if we have a callback...
       var maxTime = 300; // 30 sec - Max time we wait in total, even if getting data
-      var dataWaitTime = 3;
-      var maxDataTime = dataWaitTime; // 300ms - max time we wait after having received data
+      var dataWaitTime = callbackNewline ? 100/*10 sec  if waiting for newline*/ : 3/*300ms*/;
+      var maxDataTime = dataWaitTime; // max time we wait after having received data
       cbTimeout = setTimeout(function timeout() {
         cbTimeout = undefined;
         if (maxTime) maxTime--;
@@ -365,6 +365,8 @@
           cbTimeout = setTimeout(timeout, 100);
         } else {
           connection.cb = undefined;
+          if (callbackNewline)
+            log(2, "write waiting for newline timed out");
           if (callback)
             callback(connection.received);
           isBusy = false;
@@ -416,7 +418,7 @@
         log(1, "Unable to decode "+JSON.stringify(d)+", got "+e.toString());
         cb(null, "Unable to decode "+JSON.stringify(d)+", got "+e.toString());
       }
-    }, true);
+    }, true/*callbackNewline*/);
   };
 
   // ----------------------------------------------------------
