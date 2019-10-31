@@ -76,6 +76,7 @@
       var txCharacteristic;
       var rxCharacteristic;
       var txDataQueue = [];
+      var flowControlXOFF = false;
 
       connection.close = function(callback) {
         connection.isOpening = false;
@@ -98,6 +99,10 @@
         if (connection.isOpen && !connection.txInProgress) writeChunk();
 
         function writeChunk() {
+          if (flowControlXOFF) { // flow control - try again later
+            setTimeout(writeChunk, 50);
+            return;
+          }
           var chunk;
           if (!txDataQueue.length) return;
           var txItem = txDataQueue[0];
@@ -160,8 +165,21 @@
         rxCharacteristic = characteristic;
         log(2, "RX characteristic:"+JSON.stringify(rxCharacteristic));
         rxCharacteristic.addEventListener('characteristicvaluechanged', function(event) {
-          var value = event.target.value.buffer; // get arraybuffer
-          var str = ab2str(value);
+          var dataview = event.target.value;
+          if (uart.flowControl) {
+            for (var i=0;i<dataview.length;i++) {
+              var ch = dataview.getUint8(i);
+              if (ch==17) { // XON
+                log(2,"XON received => resume upload");
+                flowControlXOFF = false;
+              }
+              if (ch==19) { // XOFF
+                log(2,"XOFF received => pause upload");
+                flowControlXOFF = true;
+              }
+            }
+          }
+          var str = ab2str(dataview.buffer);
           log(3, "Received "+JSON.stringify(str));
           connection.emit('data', str);
         });
@@ -426,6 +444,8 @@
   var uart = {
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 3,//FIXME 1,
+    /// Should we use flow control? Default is true
+    flowControl : true,
     /// Used internally to write log information - you can replace this with your own function
     log : function(level, s) { if (level <= this.debug) console.log("<UART> "+s)},
     /** Connect to a new device - this creates a separate
