@@ -51,6 +51,7 @@ return c;
     "4bitmac":4,
     "vga":8,
     "web":8,
+    "rgb565":16
   };
 
 
@@ -77,6 +78,12 @@ return c;
     "web":function(r,g,b,a) {
       return PALETTE.lookup(PALETTE.WEB,r,g,b,a);
     },
+    "rgb565":function(r,g,b,a) {
+      return (
+        ((r&0xF8)<<8) |
+        ((g&0xFC)<<3) |
+        ((b&0xF8)>>3));
+    },
   };
   var COL_TO_RGB = {
     "1bit":function(c) {
@@ -98,6 +105,12 @@ return c;
     "web":function(c,x,y) {
       if (c==TRANSPARENT_8BIT) return ((((x>>2)^(y>>2))&1)?0xFFFFFF:0);
       return PALETTE.WEB[c];
+    },
+    "rgb565":function(c,x,y) {
+      var r = (c>>8)&0xF8;
+      var g = (c>>3)&0xFC;
+      var b = (c<<3)&0xF8;
+      return (r<<16)|(g<<8)|b;
     },
   };
 
@@ -163,6 +176,7 @@ return c;
         if (bpp==1) bitData[n>>3] |= c ? 128>>(n&7) : 0;
         else if (bpp==4) bitData[n>>1] |= c<<((n&1)?0:4);
         else if (bpp==8) bitData[n] = c;
+        else if (bpp==16) { bitData[n<<1] = c>>8; bitData[1+(n<<1)] = c&0xFF; }
         else throw new Error("Unhandled BPP");
         var cr = COL_TO_RGB[options.mode](c,x,y);
         var or = cr>>16;
