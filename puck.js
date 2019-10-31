@@ -132,6 +132,7 @@ Or more advanced usage with control of the connection
     var txCharacteristic;
     var rxCharacteristic;
     var txDataQueue = [];
+    var flowControlXOFF = false;
 
     connection.close = function() {
       connection.isOpening = false;
@@ -154,6 +155,10 @@ Or more advanced usage with control of the connection
       if (connection.isOpen && !connection.txInProgress) writeChunk();
 
       function writeChunk() {
+        if (flowControlXOFF) { // flow control - try again later
+          setTimeout(writeChunk, 50);
+          return;
+        }
         var chunk;
         if (!txDataQueue.length) return;
         var txItem = txDataQueue[0];
@@ -215,10 +220,28 @@ Or more advanced usage with control of the connection
       rxCharacteristic = characteristic;
       log(2, "RX characteristic:"+JSON.stringify(rxCharacteristic));
       rxCharacteristic.addEventListener('characteristicvaluechanged', function(event) {
-        var value = event.target.value.buffer; // get arraybuffer
-        var str = ab2str(value);
-        log(3, "Received "+JSON.stringify(str));
-        connection.emit('data', str);
+        var dataview = event.target.value;
+        var data = ab2str(dataview.buffer);
+        if (puck.flowControl) {
+          for (var i=0;i<data.length;i++) {
+            var ch = data.charCodeAt(i);
+            var remove = true;
+            if (ch==19) {// XOFF
+              log(2,"XOFF received => pause upload");
+              flowControlXOFF = true;
+            } else if (ch==17) {// XON
+              log(2,"XON received => resume upload");
+              flowControlXOFF = false;
+            } else
+              remove = false;
+            if (remove) { // remove character
+              data = data.substr(0,i-1)+data.substr(i+1);
+              i--;
+            }
+          }
+        }
+        log(3, "Received "+JSON.stringify(data));
+        connection.emit('data', data);
       });
       return rxCharacteristic.startNotifications();
     }).then(function() {
@@ -329,6 +352,8 @@ Or more advanced usage with control of the connection
   var puck = {
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
+    /// Should we use flow control? Default is true
+    flowControl : true,
     /// Used internally to write log information - you can replace this with your own function
     log : function(level, s) { if (level <= this.debug) console.log("<BLE> "+s)},
     /** Connect to a new device - this creates a separate
