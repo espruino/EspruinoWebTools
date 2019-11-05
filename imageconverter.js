@@ -47,6 +47,7 @@ return c;
 
   var COL_BPP = {
     "1bit":1,
+    "2bitbw":2,
     "4bit":4,
     "4bitmac":4,
     "vga":8,
@@ -60,6 +61,12 @@ return c;
       var c = (r+g+b) / 3;
       var thresh = 128;
       return c>thresh;
+    },
+    "2bitbw":function(r,g,b) {
+      var c = (r+g+b) / 3;
+      c += 31; // rounding
+      if (c>255)c=255;
+      return c>>6;
     },
     "4bit":function(r,g,b,a) {
       var thresh = 128;
@@ -88,6 +95,11 @@ return c;
   var COL_TO_RGB = {
     "1bit":function(c) {
       return c ? 0xFFFFFF : 0;
+    },
+    "2bitbw":function(c) {
+      c = c&3;
+      c = c | (c<<2) | (c<<4) | (c<<6);
+      return (c<<16)|(c<<8)|c;
     },
     "4bit":function(c,x,y) {
       if (!(c&8)) return ((((x>>2)^(y>>2))&1)?0xFFFFFF:0);
@@ -174,6 +186,7 @@ return c;
 
         var c = COL_FROM_RGB[options.mode](r,g,b,a);
         if (bpp==1) bitData[n>>3] |= c ? 128>>(n&7) : 0;
+        else if (bpp==2) bitData[n>>2] |= c<<((3-(n&3))*2);
         else if (bpp==4) bitData[n>>1] |= c<<((n&1)?0:4);
         else if (bpp==8) bitData[n] = c;
         else if (bpp==16) { bitData[n<<1] = c>>8; bitData[1+(n<<1)] = c&0xFF; }
