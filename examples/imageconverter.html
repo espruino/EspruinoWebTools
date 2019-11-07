@@ -9,6 +9,7 @@
 
    <input type="file" id="fileLoader"/><br/>
    <input type="checkbox" id="compression" onchange="imageLoaded()">Use Compression?</input><br/>
+   <input type="checkbox" id="transparent" onchange="imageLoaded()" checked>Transparency?</input><br/>
    Diffusion:
    <select id="diffusion" onchange="imageLoaded()">
    <option value="none" selected="selected">Flat</option>
@@ -48,6 +49,7 @@
        var diffusionSelect = document.getElementById("diffusion");
        options.diffusion = diffusionSelect.options[diffusionSelect.selectedIndex].value;
        options.compression = document.getElementById("compression").checked;
+       options.transparency = document.getElementById("transparent").checked;
        options.brightness = 0|document.getElementById("brightness").value;
        var colorSelect = document.getElementById("colorStyle");
        options.mode = colorSelect.options[colorSelect.selectedIndex].value;
@@ -85,6 +87,26 @@
            imgstr += "require('Storage').write('im"+(y/SLICEHEIGHT)+"',"+imageconverter.RGBAtoString(rgba, options)+")\n";
            ctx.putImageData(imageData,img.width,y);
          }
+       }
+
+       // chequerboard
+       {
+         var imageData = ctx.getImageData(0, 0, img.width, img.height);
+         var rgba = imageData.data;
+         var n=0;
+         for (var y=0; y<options.height; y++) {
+           for (var x=0; x<options.width; x++) {
+             var na = rgba[n*4+3]/255;
+             var a = 1-na;
+             var chequerboard = ((((x>>2)^(y>>2))&1)?0xFFFFFF:0);
+             rgba[n*4]   = rgba[n*4]*na + chequerboard*a;
+             rgba[n*4+1] = rgba[n*4+1]*na + chequerboard*a;
+             rgba[n*4+2] = rgba[n*4+2]*na + chequerboard*a;
+             rgba[n*4+3] = 255;
+             n++;
+           }
+         }
+         ctx.putImageData(imageData,0,0);
        }
 
        document.getElementById("ressize").innerHTML = imgstr.length+" Characters";

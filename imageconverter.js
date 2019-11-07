@@ -94,35 +94,35 @@ return c;
   };
   var COL_TO_RGB = {
     "1bit":function(c) {
-      return c ? 0xFFFFFF : 0;
+      return c ? 0xFFFFFFFF : 0xFF000000;
     },
     "2bitbw":function(c) {
       c = c&3;
       c = c | (c<<2) | (c<<4) | (c<<6);
-      return (c<<16)|(c<<8)|c;
+      return 0xFF000000|(c<<16)|(c<<8)|c;
     },
-    "4bit":function(c,x,y) {
-      if (!(c&8)) return ((((x>>2)^(y>>2))&1)?0xFFFFFF:0);
-      return ((c&1 ? 0xFF0000 : 0) |
-              (c&2 ? 0x00FF00 : 0) |
-              (c&4 ? 0x0000FF : 0));
+    "4bit":function(c) {
+      if (!(c&8)) return 0;
+      return ((c&1 ? 0xFF0000 : 0xFF000000) |
+              (c&2 ? 0x00FF00 : 0xFF000000) |
+              (c&4 ? 0x0000FF : 0xFF000000));
     },
-    "4bitmac":function(c,x,y) {
-      return PALETTE.MAC16[c];
+    "4bitmac":function(c) {
+      return 0xFF000000|PALETTE.MAC16[c];
     },
-    "vga":function(c,x,y) {
-      if (c==TRANSPARENT_8BIT) return ((((x>>2)^(y>>2))&1)?0xFFFFFF:0);
-      return PALETTE.VGA[c];
+    "vga":function(c) {
+      if (c==TRANSPARENT_8BIT) return 0;
+      return 0xFF000000|PALETTE.VGA[c];
     },
-    "web":function(c,x,y) {
-      if (c==TRANSPARENT_8BIT) return ((((x>>2)^(y>>2))&1)?0xFFFFFF:0);
-      return PALETTE.WEB[c];
+    "web":function(c) {
+      if (c==TRANSPARENT_8BIT) return 0;
+      return 0xFF000000|PALETTE.WEB[c];
     },
-    "rgb565":function(c,x,y) {
+    "rgb565":function(c) {
       var r = (c>>8)&0xF8;
       var g = (c>>3)&0xFC;
       var b = (c<<3)&0xF8;
-      return (r<<16)|(g<<8)|b;
+      return 0xFF000000|(r<<16)|(g<<8)|b;
     },
   };
 
@@ -148,73 +148,131 @@ return c;
     options.mode = options.mode || "1bit";
     options.output = options.output || "object";
     options.inverted = options.inverted || false;
+    options.transparent = options.transparent || true;
     var transparentCol = undefined;
-    if (options.mode=="4bit")
-      transparentCol=0;
-    if (options.mode=="vga" || options.mode=="web")
-      transparentCol=TRANSPARENT_8BIT;
+    if (options.transparent) {
+      if (options.mode=="4bit")
+        transparentCol=0;
+      if (options.mode=="vga" || options.mode=="web")
+        transparentCol=TRANSPARENT_8BIT;
+    }
     var bpp = COL_BPP[options.mode];
     var bitData = new Uint8Array(((options.width*options.height)*bpp+7)/8);
-    var er=0,eg=0,eb=0;
-    var n = 0;
-    for (var y=0; y<options.height; y++) {
-      //var s = "";
-      for (var x=0; x<options.width; x++) {
-        var r = rgba[n*4];
-        var g = rgba[n*4+1];
-        var b = rgba[n*4+2];
-        var a = rgba[n*4+3];
 
-        if (options.diffusion == "random1" ||
-            options.diffusion == "errorrandom") {
-          er += Math.random()*48 - 24;
-          eg += Math.random()*48 - 24;
-          eb += Math.random()*48 - 24;
-        } else if (options.diffusion == "random2") {
-          er += Math.random()*128 - 64;
-          eg += Math.random()*128 - 64;
-          eb += Math.random()*128 - 64;
-        }
-        if (options.inverted) {
-          r=255-r;
-          g=255-g;
-          b=255-b;
-        }
-        r = clip(r + options.brightness + er);
-        g = clip(g + options.brightness + eg);
-        b = clip(b + options.brightness + eb);
+    function readImage() {
+      var pixels = new Int32Array(options.width*options.height);
+      var n = 0;
+      var er=0,eg=0,eb=0;
+      for (var y=0; y<options.height; y++) {
+        for (var x=0; x<options.width; x++) {
+          var r = rgba[n*4];
+          var g = rgba[n*4+1];
+          var b = rgba[n*4+2];
+          var a = rgba[n*4+3];
 
-        var c = COL_FROM_RGB[options.mode](r,g,b,a);
-        if (bpp==1) bitData[n>>3] |= c ? 128>>(n&7) : 0;
-        else if (bpp==2) bitData[n>>2] |= c<<((3-(n&3))*2);
-        else if (bpp==4) bitData[n>>1] |= c<<((n&1)?0:4);
-        else if (bpp==8) bitData[n] = c;
-        else if (bpp==16) { bitData[n<<1] = c>>8; bitData[1+(n<<1)] = c&0xFF; }
-        else throw new Error("Unhandled BPP");
-        var cr = COL_TO_RGB[options.mode](c,x,y);
-        var or = cr>>16;
-        var og = (cr>>8)&255;
-        var ob = cr&255;
-        if (options.diffusion.startsWith("error") && a>128) {
-          er = r-or;
-          eg = g-og;
-          eb = b-ob;
-        } else {
-          er = 0;
-          eg = 0;
-          eb = 0;
+          if (options.diffusion == "random1" ||
+              options.diffusion == "errorrandom") {
+            er += Math.random()*48 - 24;
+            eg += Math.random()*48 - 24;
+            eb += Math.random()*48 - 24;
+          } else if (options.diffusion == "random2") {
+            er += Math.random()*128 - 64;
+            eg += Math.random()*128 - 64;
+            eb += Math.random()*128 - 64;
+          }
+          if (options.inverted) {
+            r=255-r;
+            g=255-g;
+            b=255-b;
+          }
+          r = clip(r + options.brightness + er);
+          g = clip(g + options.brightness + eg);
+          b = clip(b + options.brightness + eb);
+          var isTransparent = a<128;
+
+          var c = COL_FROM_RGB[options.mode](r,g,b,a);
+          if (isTransparent && options.transparent && transparentCol===undefined)
+            c = -1;
+          pixels[n] = c;
+          // error diffusion
+          var cr = COL_TO_RGB[options.mode](c);
+          var oa = cr>>24;
+          var or = (cr>>16)&255;
+          var og = (cr>>8)&255;
+          var ob = cr&255;
+          if (options.diffusion.startsWith("error") && a>128) {
+            er = r-or;
+            eg = g-og;
+            eb = b-ob;
+          } else {
+            er = 0;
+            eg = 0;
+            eb = 0;
+          }
+
+          n++;
         }
-        if (options.rgbaOut) {
-          options.rgbaOut[n*4] = or;
-          options.rgbaOut[n*4+1]= og;
-          options.rgbaOut[n*4+2]= ob;
-          options.rgbaOut[n*4+3]=255;
-        }
-        n++;
       }
-      //console.log(s);
+      return pixels;
     }
-    //console.log(bitData);
+    function writeImage(pixels) {
+      var n = 0;
+      for (var y=0; y<options.height; y++) {
+        for (var x=0; x<options.width; x++) {
+          var c = pixels[n];
+          // Write image data
+          if (bpp==1) bitData[n>>3] |= c ? 128>>(n&7) : 0;
+          else if (bpp==2) bitData[n>>2] |= c<<((3-(n&3))*2);
+          else if (bpp==4) bitData[n>>1] |= c<<((n&1)?0:4);
+          else if (bpp==8) bitData[n] = c;
+          else if (bpp==16) { bitData[n<<1] = c>>8; bitData[1+(n<<1)] = c&0xFF; }
+          else throw new Error("Unhandled BPP");
+          // Write preview
+          var cr = COL_TO_RGB[options.mode](c);
+          if (c===transparentCol)
+            cr = ((((x>>2)^(y>>2))&1)?0xFFFFFF:0); // pixel pattern
+          var oa = cr>>24;
+          var or = (cr>>16)&255;
+          var og = (cr>>8)&255;
+          var ob = cr&255;
+
+          if (options.rgbaOut) {
+            options.rgbaOut[n*4] = or;
+            options.rgbaOut[n*4+1]= og;
+            options.rgbaOut[n*4+2]= ob;
+            options.rgbaOut[n*4+3]=255;
+          }
+          n++;
+        }
+      }
+    }
+
+    var pixels = readImage();
+    if (options.transparent && transparentCol===undefined && bpp<=16) {
+      // we have no fixed transparent colour - pick one that's unused
+      var colors = new Uint32Array(1<<bpp);
+      // how many colours?
+      for (var i=0;i<pixels.length;i++)
+        if (pixels[i]>=0)
+          colors[pixels[i]]++;
+      // find an empty one
+      for (var i=0;i<colors.length;i++)
+        if (colors[i]==0) {
+          transparentCol = i;
+          break;
+        }
+      if (transparentCol===undefined) {
+        console.log("No unused colour found - using 0 for transparency");
+        for (var i=0;i<pixels.length;i++)
+          if (pixels[i]<0)
+            pixels[i]=0;
+      } else {
+        for (var i=0;i<pixels.length;i++)
+          if (pixels[i]<0)
+            pixels[i]=transparentCol;
+      }
+    }
+    writeImage(pixels);
 
     var strCmd;
     if (options.output=="string") {
@@ -291,6 +349,7 @@ return c;
       rgbaOut : "Uint8Array", //  to store quantised data
       diffusion : ["none"],
       compression : "bool",
+      transparency : "bool",
       brightness : "int",
       mode : Object.keys(COL_BPP),
       output : ["object","string"],
