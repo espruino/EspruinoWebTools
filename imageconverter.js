@@ -148,7 +148,7 @@ return c;
     options.mode = options.mode || "1bit";
     options.output = options.output || "object";
     options.inverted = options.inverted || false;
-    options.transparent = options.transparent || true;
+    options.transparent = !!options.transparent;
     var transparentCol = undefined;
     if (options.transparent) {
       if (options.mode=="4bit")
@@ -367,7 +367,7 @@ return c;
       rgbaOut : "Uint8Array", //  to store quantised data
       diffusion : ["none"],
       compression : "bool",
-      transparency : "bool",
+      transparent : "bool",
       brightness : "int",
       mode : Object.keys(COL_BPP),
       output : ["object","string"],
