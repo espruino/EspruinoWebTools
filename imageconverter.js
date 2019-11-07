@@ -310,6 +310,24 @@ return c;
     return imgstr;
   }
 
+  /* Add a checkerboard background to any transparent areas and
+  make everything nontransparent. expects width/height in optuons */
+  function RGBAtoCheckerboard(rgba, options) {
+    var n=0;
+    for (var y=0; y<options.height; y++) {
+      for (var x=0; x<options.width; x++) {
+        var na = rgba[n*4+3]/255;
+        var a = 1-na;
+        var chequerboard = ((((x>>2)^(y>>2))&1)?0xFFFFFF:0);
+        rgba[n*4]   = rgba[n*4]*na + chequerboard*a;
+        rgba[n*4+1] = rgba[n*4+1]*na + chequerboard*a;
+        rgba[n*4+2] = rgba[n*4+2]*na + chequerboard*a;
+        rgba[n*4+3] = 255;
+        n++;
+      }
+    }
+  }
+
   /* RGBAtoString options, PLUS:
 
   updateCanvas: update canvas with the quantized image
@@ -360,6 +378,7 @@ return c;
   // =======================================================
   return {
     RGBAtoString : RGBAtoString,
+    RGBAtoCheckerboard : RGBAtoCheckerboard,
     canvastoString : canvastoString,
     imagetoString : imagetoString,
     getOptions : getOptions,

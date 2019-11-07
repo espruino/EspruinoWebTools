@@ -66,9 +66,10 @@
        canvas.style = "display:block;border:1px solid black;margin:8px;"
        var ctx = canvas.getContext("2d");
        ctx.drawImage(img,0,0);
-       var sliced = false;
+
        var imgstr = "";
-       if (!sliced) {
+
+       if (true) {
          var imageData = ctx.getImageData(0, 0, img.width, img.height);
          var rgba = imageData.data;
          options.rgbaOut = rgba;
@@ -76,7 +77,7 @@
          options.height = img.height;
          imgstr = "var img = "+imageconverter.RGBAtoString(rgba, options);
          ctx.putImageData(imageData,img.width,0);
-       } else {
+       }/* else { // output the image as slices
          var SLICEHEIGHT = 8;
          for (var y=0;y<img.height;y+=SLICEHEIGHT) {
            var imageData = ctx.getImageData(0, y, img.width, SLICEHEIGHT);
@@ -87,27 +88,12 @@
            imgstr += "require('Storage').write('im"+(y/SLICEHEIGHT)+"',"+imageconverter.RGBAtoString(rgba, options)+")\n";
            ctx.putImageData(imageData,img.width,y);
          }
-       }
+       }*/
 
-       // chequerboard
-       {
-         var imageData = ctx.getImageData(0, 0, img.width, img.height);
-         var rgba = imageData.data;
-         var n=0;
-         for (var y=0; y<options.height; y++) {
-           for (var x=0; x<options.width; x++) {
-             var na = rgba[n*4+3]/255;
-             var a = 1-na;
-             var chequerboard = ((((x>>2)^(y>>2))&1)?0xFFFFFF:0);
-             rgba[n*4]   = rgba[n*4]*na + chequerboard*a;
-             rgba[n*4+1] = rgba[n*4+1]*na + chequerboard*a;
-             rgba[n*4+2] = rgba[n*4+2]*na + chequerboard*a;
-             rgba[n*4+3] = 255;
-             n++;
-           }
-         }
-         ctx.putImageData(imageData,0,0);
-       }
+       // checkerboard for transparency on original image
+       var imageData = ctx.getImageData(0, 0, img.width, img.height);
+       imageconverter.RGBAtoCheckerboard(imageData.data, options)
+       ctx.putImageData(imageData,0,0);
 
        document.getElementById("ressize").innerHTML = imgstr.length+" Characters";
        document.getElementById("resdata").innerHTML = imgstr;
