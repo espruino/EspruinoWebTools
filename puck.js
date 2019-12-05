@@ -151,7 +151,7 @@ Or more advanced usage with control of the connection
     };
 
     connection.write = function(data, callback) {
-      if (data) txDataQueue.push({data:data,callback:callback});
+      if (data) txDataQueue.push({data:data,callback:callback,maxLength:data.length});
       if (connection.isOpen && !connection.txInProgress) writeChunk();
 
       function writeChunk() {
@@ -160,8 +160,12 @@ Or more advanced usage with control of the connection
           return;
         }
         var chunk;
-        if (!txDataQueue.length) return;
+        if (!txDataQueue.length) {
+          puck.writeProgress();
+          return;
+        }
         var txItem = txDataQueue[0];
+        puck.writeProgress(txItem.maxLength - txItem.data.length, txItem.maxLength);
         if (txItem.data.length <= CHUNKSIZE) {
           chunk = txItem.data;
           txItem.data = undefined;
@@ -356,6 +360,10 @@ Or more advanced usage with control of the connection
     flowControl : true,
     /// Used internally to write log information - you can replace this with your own function
     log : function(level, s) { if (level <= this.debug) console.log("<BLE> "+s)},
+    /// Called with the current send progress or undefined when done - you can replace this with your own function
+    writeProgress : function (charsSent, charsTotal) {
+      //console.log(charsSent + "/" + charsTotal);
+    },
     /** Connect to a new device - this creates a separate
      connection to the one `write` and `eval` use. */
     connect : connect,
