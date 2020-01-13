@@ -207,62 +207,71 @@ Or more advanced usage with control of the connection
         log(1, "Disconnected (gattserverdisconnected)");
         connection.close();
       });
-      return device.gatt.connect();
-    }).then(function(server) {
-      log(1, "Connected");
-      btServer = server;
-      return server.getPrimaryService(NORDIC_SERVICE);
-    }).then(function(service) {
-      log(2, "Got service");
-      btService = service;
-      return btService.getCharacteristic(NORDIC_RX);
-    }).then(function (characteristic) {
-      rxCharacteristic = characteristic;
-      log(2, "RX characteristic:"+JSON.stringify(rxCharacteristic));
-      rxCharacteristic.addEventListener('characteristicvaluechanged', function(event) {
-        var dataview = event.target.value;
-        var data = ab2str(dataview.buffer);
-        if (puck.flowControl) {
-          for (var i=0;i<data.length;i++) {
-            var ch = data.charCodeAt(i);
-            var remove = true;
-            if (ch==19) {// XOFF
-              log(2,"XOFF received => pause upload");
-              flowControlXOFF = true;
-            } else if (ch==17) {// XON
-              log(2,"XON received => resume upload");
-              flowControlXOFF = false;
-            } else
-              remove = false;
-            if (remove) { // remove character
-              data = data.substr(0,i-1)+data.substr(i+1);
-              i--;
-            }
-          }
-        }
-        log(3, "Received "+JSON.stringify(data));
-        connection.emit('data', data);
-      });
-      return rxCharacteristic.startNotifications();
-    }).then(function() {
-      return btService.getCharacteristic(NORDIC_TX);
-    }).then(function (characteristic) {
-      txCharacteristic = characteristic;
-      log(2, "TX characteristic:"+JSON.stringify(txCharacteristic));
-    }).then(function() {
-      connection.txInProgress = false;
-      connection.isOpen = true;
-      connection.isOpening = false;
-      isBusy = false;
-      queue = [];
-      callback(connection);
-      connection.emit('open');
-      // if we had any writes queued, do them now
-      connection.write();
+      connection.device = device;
+      connection.reconnect(callback);
     }).catch(function(error) {
       log(1, 'ERROR: ' + error);
       connection.close();
     });
+
+    connection.reconnect = function(callback) {
+      connection.device.gatt.connect().then(function(server) {
+        log(1, "Connected");
+        btServer = server;
+        return server.getPrimaryService(NORDIC_SERVICE);
+      }).then(function(service) {
+        log(2, "Got service");
+        btService = service;
+        return btService.getCharacteristic(NORDIC_RX);
+      }).then(function (characteristic) {
+        rxCharacteristic = characteristic;
+        log(2, "RX characteristic:"+JSON.stringify(rxCharacteristic));
+        rxCharacteristic.addEventListener('characteristicvaluechanged', function(event) {
+          var dataview = event.target.value;
+          var data = ab2str(dataview.buffer);
+          if (puck.flowControl) {
+            for (var i=0;i<data.length;i++) {
+              var ch = data.charCodeAt(i);
+              var remove = true;
+              if (ch==19) {// XOFF
+                log(2,"XOFF received => pause upload");
+                flowControlXOFF = true;
+              } else if (ch==17) {// XON
+                log(2,"XON received => resume upload");
+                flowControlXOFF = false;
+              } else
+                remove = false;
+              if (remove) { // remove character
+                data = data.substr(0,i-1)+data.substr(i+1);
+                i--;
+              }
+            }
+          }
+          log(3, "Received "+JSON.stringify(data));
+          connection.emit('data', data);
+        });
+        return rxCharacteristic.startNotifications();
+      }).then(function() {
+        return btService.getCharacteristic(NORDIC_TX);
+      }).then(function (characteristic) {
+        txCharacteristic = characteristic;
+        log(2, "TX characteristic:"+JSON.stringify(txCharacteristic));
+      }).then(function() {
+        connection.txInProgress = false;
+        connection.isOpen = true;
+        connection.isOpening = false;
+        isBusy = false;
+        queue = [];
+        callback(connection);
+        connection.emit('open');
+        // if we had any writes queued, do them now
+        connection.write();
+      }).catch(function(error) {
+        log(1, 'ERROR: ' + error);
+        connection.close();
+      });
+    };
+
     return connection;
   };
 
