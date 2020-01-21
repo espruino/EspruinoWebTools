@@ -1,3 +1,6 @@
+/* Copyright 2020 Gordon Williams, gw@pur3.co.uk
+   https://github.com/espruino/EspruinoWebTools
+*/
 (function (root, factory) {
     if (typeof define === 'function' && define.amd) {
         // AMD. Register as an anonymous module.

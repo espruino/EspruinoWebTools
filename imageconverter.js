@@ -1,3 +1,6 @@
+/* Copyright 2020 Gordon Williams, gw@pur3.co.uk
+   https://github.com/espruino/EspruinoWebTools
+*/
 (function (root, factory) {
     if (typeof define === 'function' && define.amd) {
         // AMD. Register as an anonymous module.
@@ -125,6 +128,14 @@ return c;
       return 0xFF000000|(r<<16)|(g<<8)|b;
     },
   };
+  // What Espruino uses by default
+  var BPP_TO_COLOR_FORMAT = {
+    1 : "1bit",
+    2 : "2bitbw",
+    4 : "4bitmac",
+    8 : "web",
+    16 : "rgb565"
+  };
 
   function clip(x) {
     if (x<0) return 0;
@@ -191,12 +202,14 @@ return c;
           var isTransparent = a<128;
 
           var c = COL_FROM_RGB[options.mode](r,g,b,a);
-          if (isTransparent && options.transparent && transparentCol===undefined)
+          if (isTransparent && options.transparent && transparentCol===undefined) {
             c = -1;
+            a = 0;
+          }
           pixels[n] = c;
           // error diffusion
           var cr = COL_TO_RGB[options.mode](c);
-          var oa = cr>>24;
+          var oa = cr>>>24;
           var or = (cr>>16)&255;
           var og = (cr>>8)&255;
           var ob = cr&255;
@@ -231,11 +244,10 @@ return c;
           var cr = COL_TO_RGB[options.mode](c);
           if (c===transparentCol)
             cr = ((((x>>2)^(y>>2))&1)?0xFFFFFF:0); // pixel pattern
-          var oa = cr>>24;
+          var oa = cr>>>24;
           var or = (cr>>16)&255;
           var og = (cr>>8)&255;
           var ob = cr&255;
-
           if (options.rgbaOut) {
             options.rgbaOut[n*4] = or;
             options.rgbaOut[n*4+1]= og;
@@ -375,6 +387,65 @@ return c;
     }
   }
 
+  /* Decode an Espruino image string into a URL, return undefined if it's not valid.
+  options =  {
+    transparent : bool // should the image be transparent, or just chequered where transparent?
+  } */
+  function stringToImageURL(data, options) {
+    options = options||{};
+    var p = 0;
+    var width = 0|data.charCodeAt(p++);
+    var height = 0|data.charCodeAt(p++);
+    var bpp = 0|data.charCodeAt(p++);
+    var transparentCol = -1;
+    if (bpp&128) {
+      bpp &= 127;
+      transparentCol = 0|data.charCodeAt(p++);
+    }
+    var mode = BPP_TO_COLOR_FORMAT[bpp];
+    if (!mode) return undefined; // unknown format
+    var bitmapSize = ((width*height*bpp)+7) >> 3;
+    // If it's the wrong length, it's not a bitmap or it's corrupt!
+    if (data.length != p+bitmapSize)
+      return undefined;
+    // Ok, build the picture
+    var canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    var ctx = canvas.getContext("2d");
+    var imageData = ctx.getImageData(0, 0, width, height);
+    var rgba = imageData.data;
+    var no = 0;
+    var nibits = 0;
+    var nidata = 0;
+    for (var i=0;i<width*height;i++) {
+      while (nibits<bpp) {
+        nidata = (nidata<<8) | data.charCodeAt(p++);
+        nibits += 8;
+      }
+      var c = (nidata>>(nibits-bpp)) & ((1<<bpp)-1);
+      nibits -= bpp;
+      var cr = COL_TO_RGB[mode](c);
+      if (c == transparentCol)
+        cr = cr & 0xFFFFFF;
+      rgba[no++] = (cr>>16)&255; // r
+      rgba[no++] = (cr>>8)&255; // g
+      rgba[no++] = cr&255; // b
+      rgba[no++] = cr>>>24; // a
+    }
+    if (!options.transparent)
+      RGBAtoCheckerboard(rgba, {width:width, height:height});
+    ctx.putImageData(imageData,0,0);
+    return canvas.toDataURL();
+  }
+
+// decode an Espruino image string into an HTML string, return undefined if it's not valid. See stringToImageURL
+  function stringToImageHTML(data, options) {
+    var url = stringToImageURL(data, options);
+    if (!url) return undefined;
+    return '<img src="'+url+'"\>';
+  }
+
   // =======================================================
   return {
     RGBAtoString : RGBAtoString,
@@ -382,5 +453,8 @@ return c;
     canvastoString : canvastoString,
     imagetoString : imagetoString,
     getOptions : getOptions,
+
+    stringToImageHTML : stringToImageHTML,
+    stringToImageURL : stringToImageURL
   };
 }));

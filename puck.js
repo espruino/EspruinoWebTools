@@ -1,7 +1,7 @@
 /*
 --------------------------------------------------------------------
 Puck.js BLE Interface library
-                      Copyright 2016 Gordon Williams (gw@pur3.co.uk)
+                      Copyright 2020 Gordon Williams (gw@pur3.co.uk)
 --------------------------------------------------------------------
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
