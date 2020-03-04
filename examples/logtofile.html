@@ -1,0 +1,73 @@
+<html>
+ <head>
+ </head>
+ <body>
+  <h1>Log to file</h1>
+  <p>This page connects to an Espruino device, calls a
+    function called <code>getData()</code> (which you should
+    have created previously) and then stored all data received
+    in the text box below. You can click 'Save Data' to save it
+    to a file.
+  </p>
+  <button id="connect">Connect</button>
+  Status: <span id="status"></span><br/>
+  <span>Received data:</span><br/>
+  <textarea id="result" style="width:100%;height:150px">
+  </textarea>
+  <button id="save">Save Data</button>
+
+  <script src="../uart.js"></script>
+  <script type="text/javascript">
+    var resultData = "";
+    var domResult = document.getElementById('result');
+    var domStatus = document.getElementById('status');
+    function setStatus(t) {
+      domStatus.innerHTML = t;
+    }
+
+    // When clicked, connect or disconnect
+    var connection;
+    document.getElementById('connect').addEventListener("click", function() {
+      if (connection) {
+        connection.close();
+        connection = undefined;
+      }
+      setStatus("Connecting...");
+      UART.connect(function(c) {
+        if (!c) {
+          setStatus("Couldn't connect!");
+          alert("Couldn't connect!");
+          return;
+        }
+        setStatus("Connected");
+        connection = c;
+        // Handle the data we get back, and call 'onLine'
+        // whenever we get a line
+        resultData = "";
+        connection.on("data", function(d) {
+          resultData += d;
+          setStatus(resultData.length+" bytes received");
+          result.value = resultData;
+        });
+        // First, tell the device
+        connection.write("\x03\x10getData();\n", function() {
+          setStatus("getData() sent.");
+        });
+      });
+    });
+    document.getElementById('save').addEventListener("click", function() {
+      var a = document.createElement("a"),
+          file = new Blob([resultData], {type: "text/plain"});
+      var url = URL.createObjectURL(file);
+      a.href = url;
+      a.download = "data.txt";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function() {
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+      }, 0);
+    });
+  </script>
+ </body>
+</html>

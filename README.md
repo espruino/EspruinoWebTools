@@ -14,7 +14,9 @@ Espruino devices straight from the web browser.
 UART.write('LED1.set();\n');
 ```
 
-[try it out](https://espruino.github.io/EspruinoWebTools/examples/uart.html)
+* [Simple test](https://espruino.github.io/EspruinoWebTools/examples/uart.html)
+* [Log data to a file](https://espruino.github.io/EspruinoWebTools/examples/logtofile.html)
+
 
 ## imageconverter.js
 
