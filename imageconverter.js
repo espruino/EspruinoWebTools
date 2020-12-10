@@ -60,6 +60,7 @@
   var COL_BPP = {
     "1bit":1,
     "2bitbw":2,
+    "8bitbw":8,
     "4bit":4,
     "4bitmac":4,
     "vga":8,
@@ -82,6 +83,11 @@
       c += 31; // rounding
       if (c>255)c=255;
       return c>>6;
+    },
+    "8bitbw":function(r,g,b) {
+      var c = (r+g+b)/3;
+      if (c>255) c=255;
+      return c;
     },
     "4bit":function(r,g,b,a) {
       var thresh = 128;
@@ -123,6 +129,10 @@
     "2bitbw":function(c) {
       c = c&3;
       c = c | (c<<2) | (c<<4) | (c<<6);
+      return 0xFF000000|(c<<16)|(c<<8)|c;
+    },
+    "8bitbw":function(c) {
+      c = c&255;
       return 0xFF000000|(c<<16)|(c<<8)|c;
     },
     "4bit":function(c) {
