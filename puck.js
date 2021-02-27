@@ -19,12 +19,6 @@ Execute expression and return the result:
     alert(d);
   });
 
-As a promise:
-
-  Puck.eval("BTN.read()").then(function(d) {
-    alert(d);
-  })
-
 Or write and wait for a result - this will return all characters,
 including echo and linefeed from the REPL so you may want to send
 `echo(0)` and use `console.log` when doing this.
@@ -32,6 +26,14 @@ including echo and linefeed from the REPL so you may want to send
   Puck.write("1+2\n", function(d) {
     alert(d);
   });
+
+Both `eval` and `write` will return a promise if no callback
+function is given as an argument.
+
+  alert( await Puck.eval("BTN.read()") )
+
+  alert( await Puck.write("1+2\n") )
+
 
 Or more advanced usage with control of the connection
  - allows multiple connections
