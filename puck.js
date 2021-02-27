@@ -292,11 +292,16 @@ Or more advanced usage with control of the connection
   function write(data, callback, callbackNewline) {
     if (!checkIfSupported()) return;
 
-    /// If there wasn't a callback supplied then generate a promise instead
-    const result = !callback && new Promise((resolve, reject) => callback = (value, err) => {
-      if (err) reject(err);
-      else resolve(value);
-    });
+    let result;
+    /// If there wasn't a callback function, then promisify
+    if (typeof callback !== 'function') {
+      callbackNewline = callback;
+
+      result = new Promise((resolve, reject) => callback = (value, err) => {
+        if (err) reject(err);
+        else resolve(value);
+      });
+    }
 
     if (isBusy) {
       log(3, "Busy - adding Puck.write to queue");
