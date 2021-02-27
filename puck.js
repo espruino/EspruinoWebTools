@@ -117,8 +117,7 @@ Or more advanced usage with control of the connection
     if (!queue.length) return;
     var q = queue.shift();
     log(3,"Executing "+JSON.stringify(q)+" from queue");
-    if (q.type=="eval") puck.eval(q.expr, q.cb);
-    else if (q.type=="write") puck.write(q.data, q.callback, q.callbackNewline);
+    if (q.type == "write") puck.write(q.data, q.callback, q.callbackNewline);
     else log(1,"Unknown queue item "+JSON.stringify(q));
   }
 
