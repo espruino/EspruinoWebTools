@@ -292,10 +292,16 @@ Or more advanced usage with control of the connection
   function write(data, callback, callbackNewline) {
     if (!checkIfSupported()) return;
 
+    /// If there wasn't a callback supplied then generate a promise instead
+    const result = !callback && new Promise((resolve, reject) => callback = (value, err) => {
+      if (err) reject(err);
+      else resolve(value);
+    });
+
     if (isBusy) {
       log(3, "Busy - adding Puck.write to queue");
       queue.push({type:"write", data:data, callback:callback, callbackNewline:callbackNewline});
-      return;
+      return result;
     }
 
     var cbTimeout;
@@ -342,7 +348,8 @@ Or more advanced usage with control of the connection
     if (connection && (connection.isOpen || connection.isOpening)) {
       if (!connection.txInProgress) connection.received = "";
       isBusy = true;
-      return connection.write(data, onWritten);
+      connection.write(data, onWritten);
+      return result
     }
 
     connection = connect(function(puck) {
@@ -363,6 +370,8 @@ Or more advanced usage with control of the connection
       isBusy = true;
       connection.write(data, onWritten);
     });
+
+    return result
   }
 
   // ----------------------------------------------------------
