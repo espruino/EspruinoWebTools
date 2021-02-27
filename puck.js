@@ -400,23 +400,23 @@ Or more advanced usage with control of the connection
     /// Evaluate an expression and call cb with the result. Creates a connection if it doesn't exist
     eval : function(expr, cb) {
 
-      /// If there wasn't a callback supplied then generate a promise instead
-      const result = !cb && new Promise((resolve, reject) => cb = (value, err) => {
-        if (err) reject(err);
-        else resolve(value);
-      });
+      const response = write('\x10Bluetooth.println(JSON.stringify(' + expr + '))\n', true)
+        .then(function (d) {
+          try {
+            return JSON.parse(d);
+          } catch (e) {
+            log(1, "Unable to decode " + JSON.stringify(d) + ", got " + e.toString());
+            return Promise.reject("Unable to decode " + JSON.stringify(d) + ", got " + e.toString());
+          }
+        });
 
-      write('\x10Bluetooth.println(JSON.stringify('+expr+'))\n', function(d) {
-        try {
-          var json = JSON.parse(d);
-          cb(json);
-        } catch (e) {
-          log(1, "Unable to decode "+JSON.stringify(d)+", got "+e.toString());
-          cb(null, "Unable to decode "+JSON.stringify(d)+", got "+e.toString());
-        }
-      }, true);
 
-      return result;
+      if (cb) {
+        return void response.then(cb, (err) => cb(null, err));
+      } else {
+        return response;
+      }
+
     },
     /// Write the current time to the Puck
     setTime : function(cb) {
