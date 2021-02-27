@@ -380,11 +380,18 @@ Or more advanced usage with control of the connection
     write : write,
     /// Evaluate an expression and call cb with the result. Creates a connection if it doesn't exist
     eval : function(expr, cb) {
+
+      /// If there wasn't a callback supplied then generate a promise instead
+      const result = !cb && new Promise((resolve, reject) => cb = (value, err) => {
+        if (err) reject(err);
+        else resolve(value);
+      });
+
       if (!checkIfSupported()) return;
       if (isBusy) {
         log(3, "Busy - adding Puck.eval to queue");
         queue.push({type:"eval", expr:expr, cb:cb});
-        return;
+        return result;
       }
       write('\x10Bluetooth.println(JSON.stringify('+expr+'))\n', function(d) {
         try {
@@ -395,6 +402,8 @@ Or more advanced usage with control of the connection
           cb(null, "Unable to decode "+JSON.stringify(d)+", got "+e.toString());
         }
       }, true);
+
+      return result;
     },
     /// Write the current time to the Puck
     setTime : function(cb) {
