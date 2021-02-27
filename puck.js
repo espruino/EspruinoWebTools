@@ -408,7 +408,7 @@ Or more advanced usage with control of the connection
             return JSON.parse(d);
           } catch (e) {
             log(1, "Unable to decode " + JSON.stringify(d) + ", got " + e.toString());
-            return Promise.reject("Unable to decode " + JSON.stringify(d) + ", got " + e.toString());
+            return Promise.reject(d);
           }
         });
 
