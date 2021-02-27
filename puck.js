@@ -393,12 +393,6 @@ Or more advanced usage with control of the connection
         else resolve(value);
       });
 
-      if (!checkIfSupported()) return;
-      if (isBusy) {
-        log(3, "Busy - adding Puck.eval to queue");
-        queue.push({type:"eval", expr:expr, cb:cb});
-        return result;
-      }
       write('\x10Bluetooth.println(JSON.stringify('+expr+'))\n', function(d) {
         try {
           var json = JSON.parse(d);
