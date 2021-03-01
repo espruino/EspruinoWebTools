@@ -27,6 +27,14 @@ including echo and linefeed from the REPL so you may want to send
     alert(d);
   });
 
+Both `eval` and `write` will return a promise if no callback
+function is given as an argument.
+
+  alert( await Puck.eval("BTN.read()") )
+
+  alert( await Puck.write("1+2\n") )
+
+
 Or more advanced usage with control of the connection
  - allows multiple connections
 
@@ -111,8 +119,7 @@ Or more advanced usage with control of the connection
     if (!queue.length) return;
     var q = queue.shift();
     log(3,"Executing "+JSON.stringify(q)+" from queue");
-    if (q.type=="eval") puck.eval(q.expr, q.cb);
-    else if (q.type=="write") puck.write(q.data, q.callback, q.callbackNewline);
+    if (q.type == "write") puck.write(q.data, q.callback, q.callbackNewline);
     else log(1,"Unknown queue item "+JSON.stringify(q));
   }
 
@@ -287,10 +294,21 @@ Or more advanced usage with control of the connection
   function write(data, callback, callbackNewline) {
     if (!checkIfSupported()) return;
 
+    let result;
+    /// If there wasn't a callback function, then promisify
+    if (typeof callback !== 'function') {
+      callbackNewline = callback;
+
+      result = new Promise((resolve, reject) => callback = (value, err) => {
+        if (err) reject(err);
+        else resolve(value);
+      });
+    }
+
     if (isBusy) {
       log(3, "Busy - adding Puck.write to queue");
       queue.push({type:"write", data:data, callback:callback, callbackNewline:callbackNewline});
-      return;
+      return result;
     }
 
     var cbTimeout;
@@ -337,7 +355,8 @@ Or more advanced usage with control of the connection
     if (connection && (connection.isOpen || connection.isOpening)) {
       if (!connection.txInProgress) connection.received = "";
       isBusy = true;
-      return connection.write(data, onWritten);
+      connection.write(data, onWritten);
+      return result
     }
 
     connection = connect(function(puck) {
@@ -358,6 +377,8 @@ Or more advanced usage with control of the connection
       isBusy = true;
       connection.write(data, onWritten);
     });
+
+    return result
   }
 
   // ----------------------------------------------------------
@@ -380,21 +401,24 @@ Or more advanced usage with control of the connection
     write : write,
     /// Evaluate an expression and call cb with the result. Creates a connection if it doesn't exist
     eval : function(expr, cb) {
-      if (!checkIfSupported()) return;
-      if (isBusy) {
-        log(3, "Busy - adding Puck.eval to queue");
-        queue.push({type:"eval", expr:expr, cb:cb});
-        return;
+
+      const response = write('\x10Bluetooth.println(JSON.stringify(' + expr + '))\n', true)
+        .then(function (d) {
+          try {
+            return JSON.parse(d);
+          } catch (e) {
+            log(1, "Unable to decode " + JSON.stringify(d) + ", got " + e.toString());
+            return Promise.reject(d);
+          }
+        });
+
+
+      if (cb) {
+        return void response.then(cb, (err) => cb(null, err));
+      } else {
+        return response;
       }
-      write('\x10Bluetooth.println(JSON.stringify('+expr+'))\n', function(d) {
-        try {
-          var json = JSON.parse(d);
-          cb(json);
-        } catch (e) {
-          log(1, "Unable to decode "+JSON.stringify(d)+", got "+e.toString());
-          cb(null, "Unable to decode "+JSON.stringify(d)+", got "+e.toString());
-        }
-      }, true);
+
     },
     /// Write the current time to the Puck
     setTime : function(cb) {
