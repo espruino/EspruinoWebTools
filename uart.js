@@ -1,5 +1,51 @@
-/* Copyright 2020 Gordon Williams, gw@pur3.co.uk
-   https://github.com/espruino/EspruinoWebTools
+/*
+--------------------------------------------------------------------
+Web Bluetooth / Web Serial Interface library for Nordic UART
+                     Copyright 2021 Gordon Williams (gw@pur3.co.uk)
+                     https://github.com/espruino/EspruinoWebTools
+--------------------------------------------------------------------
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at http://mozilla.org/MPL/2.0/.
+--------------------------------------------------------------------
+This creates a 'Puck' object that can be used from the Web Browser.
+
+Simple usage:
+
+  UART.write("LED1.set()\n")
+
+Execute expression and return the result:
+
+  UART.eval("BTN.read()", function(d) {
+    alert(d);
+  });
+
+Or write and wait for a result - this will return all characters,
+including echo and linefeed from the REPL so you may want to send
+`echo(0)` and use `console.log` when doing this.
+
+  UART.write("1+2\n", function(d) {
+    alert(d);
+  });
+
+Or more advanced usage with control of the connection
+- allows multiple connections
+
+  UART.connect(function(connection) {
+    if (!connection) throw "Error!";
+    connection.on('data', function(d) { ... });
+    connection.on('close', function() { ... });
+    connection.write("1+2\n", function() {
+      connection.close();
+    });
+  });
+
+ChangeLog:
+
+...
+1v00: Auto-adjust BLE chunk size up if we receive >20 bytes in a packet
+      Drop UART.debug to 1 (less info printed)
+      Fixed flow control on BLE
 */
 (function (root, factory) {
     if (typeof define === 'function' && define.amd) {
@@ -71,7 +117,7 @@
       var NORDIC_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
       var NORDIC_TX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
       var NORDIC_RX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
-      var CHUNKSIZE = 20;
+      var DEFAULT_CHUNKSIZE = 20;
 
       var btServer = undefined;
       var btService;
@@ -80,6 +126,7 @@
       var rxCharacteristic;
       var txDataQueue = [];
       var flowControlXOFF = false;
+      var chunkSize = DEFAULT_CHUNKSIZE;
 
       connection.close = function(callback) {
         connection.isOpening = false;
@@ -113,12 +160,12 @@
           }
           var txItem = txDataQueue[0];
           uart.writeProgress(txItem.maxLength - txItem.data.length, txItem.maxLength);
-          if (txItem.data.length <= CHUNKSIZE) {
+          if (txItem.data.length <= chunkSize) {
             chunk = txItem.data;
             txItem.data = undefined;
           } else {
-            chunk = txItem.data.substr(0,CHUNKSIZE);
-            txItem.data = txItem.data.substr(CHUNKSIZE);
+            chunk = txItem.data.substr(0,chunkSize);
+            txItem.data = txItem.data.substr(chunkSize);
           }
           connection.txInProgress = true;
           log(2, "Sending "+ JSON.stringify(chunk));
@@ -173,8 +220,12 @@
         log(2, "RX characteristic:"+JSON.stringify(rxCharacteristic));
         rxCharacteristic.addEventListener('characteristicvaluechanged', function(event) {
           var dataview = event.target.value;
+          if (dataview.byteLength > chunkSize) {
+            log(2, "Received packet of length "+dataview.byteLength+", increasing chunk size");
+            chunkSize = dataview.byteLength;
+          }
           if (uart.flowControl) {
-            for (var i=0;i<dataview.length;i++) {
+            for (var i=0;i<dataview.byteLength;i++) {
               var ch = dataview.getUint8(i);
               if (ch==17) { // XON
                 log(2,"XON received => resume upload");
@@ -451,7 +502,7 @@
 
   var uart = {
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
-    debug : 3,//FIXME 1,
+    debug : 1,
     /// Should we use flow control? Default is true
     flowControl : true,
     /// Used internally to write log information - you can replace this with your own function

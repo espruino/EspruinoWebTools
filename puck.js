@@ -1,7 +1,8 @@
 /*
 --------------------------------------------------------------------
-Puck.js BLE Interface library
-                      Copyright 2020 Gordon Williams (gw@pur3.co.uk)
+Puck.js BLE Interface library for Nordic UART
+                      Copyright 2021 Gordon Williams (gw@pur3.co.uk)
+                      https://github.com/espruino/EspruinoWebTools
 --------------------------------------------------------------------
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -46,6 +47,13 @@ Or more advanced usage with control of the connection
       connection.close();
     });
   });
+
+ChangeLog:
+
+...
+1v00 : Added Promises to write/eval
+1v01 : Raise default Chunk Size to 20
+       Auto-adjust chunk size up if we receive >20 bytes in a packet
 
 */
 (function (root, factory) {
@@ -96,7 +104,7 @@ Or more advanced usage with control of the connection
   var NORDIC_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
   var NORDIC_TX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
   var NORDIC_RX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
-  var CHUNKSIZE = 16;
+  var DEFAULT_CHUNKSIZE = 20;
 
   function log(level, s) {
     if (puck.log) puck.log(level, s);
@@ -140,6 +148,7 @@ Or more advanced usage with control of the connection
     var rxCharacteristic;
     var txDataQueue = [];
     var flowControlXOFF = false;
+    var chunkSize = DEFAULT_CHUNKSIZE;
 
     connection.close = function() {
       connection.isOpening = false;
@@ -154,6 +163,7 @@ Or more advanced usage with control of the connection
         btServer = undefined;
         txCharacteristic = undefined;
         rxCharacteristic = undefined;
+        chunkSize = DEFAULT_CHUNKSIZE;
       }
     };
 
@@ -173,12 +183,12 @@ Or more advanced usage with control of the connection
         }
         var txItem = txDataQueue[0];
         puck.writeProgress(txItem.maxLength - txItem.data.length, txItem.maxLength);
-        if (txItem.data.length <= CHUNKSIZE) {
+        if (txItem.data.length <= chunkSize) {
           chunk = txItem.data;
           txItem.data = undefined;
         } else {
-          chunk = txItem.data.substr(0,CHUNKSIZE);
-          txItem.data = txItem.data.substr(CHUNKSIZE);
+          chunk = txItem.data.substr(0,chunkSize);
+          txItem.data = txItem.data.substr(chunkSize);
         }
         connection.txInProgress = true;
         log(2, "Sending "+ JSON.stringify(chunk));
@@ -240,6 +250,10 @@ Or more advanced usage with control of the connection
         rxCharacteristic.addEventListener('characteristicvaluechanged', function(event) {
           var dataview = event.target.value;
           var data = ab2str(dataview.buffer);
+          if (data.length > chunkSize) {
+            log(2, "Received packet of length "+data.length+", increasing chunk size");
+            chunkSize = data.length;
+          }
           if (puck.flowControl) {
             for (var i=0;i<data.length;i++) {
               var ch = data.charCodeAt(i);
