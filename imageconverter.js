@@ -70,6 +70,7 @@
     "rgb565":16,
     "opt1bit":1,
     "opt2bit":2,
+    "opt3bit":3,
     "opt4bit":4,
   };
 
@@ -133,6 +134,9 @@
     "opt2bit":function(r,g,b,a,palette) {
       return PALETTE.lookup(palette.rgb888,r,g,b,a, "palette");
     },
+    "opt3bit":function(r,g,b,a,palette) {
+      return PALETTE.lookup(palette.rgb888,r,g,b,a, "palette");
+    },
     "opt4bit":function(r,g,b,a,palette) {
       return PALETTE.lookup(palette.rgb888,r,g,b,a, "palette");
     }
@@ -189,6 +193,9 @@
       return palette.rgb888[c];
     },
     "opt2bit":function(c,palette) {
+      return palette.rgb888[c];
+    },
+    "opt3bit":function(c,palette) {
       return palette.rgb888[c];
     },
     "opt4bit":function(c,palette) {
