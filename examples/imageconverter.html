@@ -26,6 +26,7 @@
    Colours: <select id="colorStyle" onchange="imageLoaded()">
    <option value="1bit" selected="selected">1 bit black/white</option>
    <option value="2bitbw">2 bit greyscale</option>
+   <option value="3bit">3 bit RGB</option>
    <option value="4bitbw">4 bit greyscale</option>
    <option value="4bit">4 bit RGBA</option>
    <option value="4bitmac">4 bit Mac palette</option>
@@ -56,7 +57,7 @@
        var diffusionSelect = document.getElementById("diffusion");
        options.diffusion = diffusionSelect.options[diffusionSelect.selectedIndex].value;
        options.compression = document.getElementById("compression").checked;
-       options.alphaToColor = document.getElementById("alphaToColor").checked; 
+       options.alphaToColor = document.getElementById("alphaToColor").checked;
        options.transparent = document.getElementById("transparent").checked;
        options.inverted = document.getElementById("inverted").checked;
        options.autoCrop = document.getElementById("autoCrop").checked;

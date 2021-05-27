@@ -61,6 +61,7 @@
     "1bit":1,
     "2bitbw":2,
     "8bitbw":8,
+    "3bit":3,
     "4bit":4,
     "4bitbw":4,
     "4bitmac":4,
@@ -95,6 +96,13 @@
       var c = (r+g+b)/3;
       if (c>255) c=255;
       return c;
+    },
+    "3bit":function(r,g,b) {
+      var thresh = 128;
+      return (
+        ((r>thresh)?1:0) |
+        ((g>thresh)?2:0) |
+        ((b>thresh)?4:0));
     },
     "4bit":function(r,g,b,a) {
       var thresh = 128;
@@ -147,11 +155,18 @@
       c = c&255;
       return 0xFF000000|(c<<16)|(c<<8)|c;
     },
+    "3bit":function(c) {
+      return ((c&1 ? 0xFF0000 : 0x000000) |
+              (c&2 ? 0x00FF00 : 0x000000) |
+              (c&4 ? 0x0000FF : 0x000000) |
+              0xFF000000);
+    },
     "4bit":function(c) {
       if (!(c&8)) return 0;
-      return ((c&1 ? 0xFF0000 : 0xFF000000) |
-              (c&2 ? 0x00FF00 : 0xFF000000) |
-              (c&4 ? 0x0000FF : 0xFF000000));
+      return ((c&1 ? 0xFF0000 : 0x000000) |
+              (c&2 ? 0x00FF00 : 0x000000) |
+              (c&4 ? 0x0000FF : 0x000000) |
+              0xFF000000);
     },
     "4bitmac":function(c) {
       return 0xFF000000|PALETTE.MAC16[c];
@@ -184,6 +199,7 @@
   var BPP_TO_COLOR_FORMAT = {
     1 : "1bit",
     2 : "2bitbw",
+    3 : "3bit",
     4 : "4bitmac",
     8 : "web",
     16 : "rgb565"
@@ -326,7 +342,14 @@
           // Write image data
           if (bpp==1) bitData[n>>3] |= c ? 128>>(n&7) : 0;
           else if (bpp==2) bitData[n>>2] |= c<<((3-(n&3))*2);
-          else if (bpp==4) bitData[n>>1] |= c<<((n&1)?0:4);
+          else if (bpp==3) {
+            c = c&7;
+            var bitaddr = n*3;
+            var a = bitaddr>>3;
+            var shift = bitaddr&7;
+            bitData[a] |= (c<<(8-shift)) >> 3;
+            bitData[a+1] |= (c<<(16-shift)) >> 3;
+          } else if (bpp==4) bitData[n>>1] |= c<<((n&1)?0:4);
           else if (bpp==8) bitData[n] = c;
           else if (bpp==16) { bitData[n<<1] = c>>8; bitData[1+(n<<1)] = c&0xFF; }
           else throw new Error("Unhandled BPP");
