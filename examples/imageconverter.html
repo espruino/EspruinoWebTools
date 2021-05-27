@@ -22,7 +22,8 @@
    <option value="errorrandom">Randomised Error Diffusion</option>
    </select><br/>
 
-   Brightness:<input type="range" id="brightness" min="-255" max="255" value="0" onchange="imageLoaded()"></input><br/>
+   Brightness:<input type="range" id="brightness" min="-127" max="127" value="0" onchange="imageLoaded()"></input><br/>
+   Contrast:<input type="range" id="contrast" min="-127" max="127" value="0" onchange="imageLoaded()"></input><br/>
    Colours: <select id="colorStyle" onchange="imageLoaded()">
    <option value="1bit" selected="selected">1 bit black/white</option>
    <option value="2bitbw">2 bit greyscale</option>
@@ -63,6 +64,7 @@
        options.inverted = document.getElementById("inverted").checked;
        options.autoCrop = document.getElementById("autoCrop").checked;
        options.brightness = 0|document.getElementById("brightness").value;
+       options.contrast = 0|document.getElementById("contrast").value;
        var colorSelect = document.getElementById("colorStyle");
        options.mode = colorSelect.options[colorSelect.selectedIndex].value;
 

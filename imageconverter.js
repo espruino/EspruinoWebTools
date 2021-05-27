@@ -254,6 +254,7 @@
       options.diffusion = "none";
     options.compression = options.compression || false;
     options.brightness = options.brightness | 0;
+    options.contrast = options.contrast | 0;
     options.mode = options.mode || "1bit";
     options.output = options.output || "object";
     options.inverted = options.inverted || false;
@@ -309,9 +310,9 @@
             g=255-g;
             b=255-b;
           }
-          r = clip(r + options.brightness + er);
-          g = clip(g + options.brightness + eg);
-          b = clip(b + options.brightness + eb);
+          r = clip(((r-128)*(128+options.contrast)>>7) + 128 + options.brightness + er);
+          g = clip(((g-128)*(128+options.contrast)>>7) + 128 + options.brightness + eg);
+          b = clip(((b-128)*(128+options.contrast)>>7) + 128 + options.brightness + eb);
           var isTransparent = a<128;
 
           var c = COL_FROM_RGB[options.mode](r,g,b,a,palette);
@@ -596,7 +597,8 @@
       diffusion : ["none"],
       compression : "bool",
       transparent : "bool",
-      brightness : "int",
+      brightness : "int", // 0 default +/- 128
+      contrast : "int", // 0 default, +/- 128
       mode : Object.keys(COL_BPP),
       output : ["object","string","raw"],
       inverted : "bool",
