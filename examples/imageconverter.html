@@ -15,15 +15,10 @@
    <input type="checkbox" id="autoCrop" onchange="imageLoaded()">Crop?</input><br/>
    Diffusion:
    <select id="diffusion" onchange="imageLoaded()">
-   <option value="none" selected="selected">Flat</option>
-   <option value="random1">Random small</option>
-   <option value="random2">Random large</option>
-   <option value="error">Error Diffusion</option>
-   <option value="errorrandom">Randomised Error Diffusion</option>
    </select><br/>
 
    Brightness:<input type="range" id="brightness" min="-127" max="127" value="0" onchange="imageLoaded()"></input><span id="brightnessv"></span><br/>
-   Contrast:<input type="range" id="contrast" min="-127" max="127" value="0" onchange="imageLoaded()"></input><span id="contrastv"></span><br/>
+   Contrast:<input type="range" id="contrast" min="-255" max="255" value="0" onchange="imageLoaded()"></input><span id="contrastv"></span><br/>
    Colours: <select id="colorStyle" onchange="imageLoaded()"></select><br/>
    Output As: <select id="outputStyle" onchange="imageLoaded()">
    <option value="object" selected="selected">Image Object</option>
@@ -37,8 +32,9 @@
    <textarea id="resdata" style="display:none;"></textarea>
 
    <script>
-     // load available colour formats...
+     // load available colour formats and diffusion...
      imageconverter.setFormatOptions(document.getElementById("colorStyle"));
+     imageconverter.setDiffusionOptions(document.getElementById("diffusion"));
 
      var img;
      function imageLoaded() {

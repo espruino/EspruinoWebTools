@@ -219,6 +219,14 @@
     16 : "rgb565"
   };
 
+  var DIFFUSION_TYPES = {
+    "none" : "Nearest color (flat)",
+    "random1":"Random small",
+    "random2":"Random large",
+    "error":"Error Diffusion",
+    "errorrandom":"Randomised Error Diffusion"
+  };
+
   function clip(x) {
     if (x<0) return 0;
     if (x>255) return 255;
@@ -266,6 +274,7 @@
     options.output = options.output || "object";
     options.inverted = options.inverted || false;
     options.transparent = !!options.transparent;
+    var contrast =  (259 * (options.contrast + 255)) / (255 * (259 - options.contrast));
 
     var transparentCol = undefined;
     if (options.transparent) {
@@ -317,9 +326,9 @@
             g=255-g;
             b=255-b;
           }
-          r = clip(((r-128)*(128+options.contrast)>>7) + 128 + options.brightness + er);
-          g = clip(((g-128)*(128+options.contrast)>>7) + 128 + options.brightness + eg);
-          b = clip(((b-128)*(128+options.contrast)>>7) + 128 + options.brightness + eb);
+          r = clip(((r + options.brightness - 128)*contrast) + 128 + er);
+          g = clip(((g + options.brightness - 128)*contrast) + 128 + eg);
+          b = clip(((b + options.brightness - 128)*contrast) + 128 + eb);
           var isTransparent = a<128;
 
           var c = fmt.fromRGBA(r,g,b,a,palette);
@@ -602,11 +611,11 @@
       width : "int",
       height : "int",
       rgbaOut : "Uint8Array", //  to store quantised data
-      diffusion : ["none"],
+      diffusion : DIFFUSION_TYPES,
       compression : "bool",
       transparent : "bool",
-      brightness : "int", // 0 default +/- 128
-      contrast : "int", // 0 default, +/- 128
+      brightness : "int", // 0 default +/- 127
+      contrast : "int", // 0 default, +/- 255
       mode : Object.keys(FORMATS),
       output : ["object","string","raw"],
       inverted : "bool",
@@ -683,6 +692,10 @@
     div.innerHTML = Object.keys(FORMATS).map(id => `<option value="${id}">${FORMATS[id].name}</option>`).join("\n");
   }
 
+  function setDiffusionOptions(div) {
+    div.innerHTML = Object.keys(DIFFUSION_TYPES).map(id => `<option value="${id}">${DIFFUSION_TYPES[id]}</option>`).join("\n");
+  }
+
   // =======================================================
   return {
     RGBAtoString : RGBAtoString,
@@ -692,6 +705,7 @@
     getOptions : getOptions,
     getFormats : function() { return FORMATS; },
     setFormatOptions : setFormatOptions,
+    setDiffusionOptions : setDiffusionOptions,
 
     stringToImageHTML : stringToImageHTML,
     stringToImageURL : stringToImageURL
