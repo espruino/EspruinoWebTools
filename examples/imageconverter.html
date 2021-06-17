@@ -8,17 +8,17 @@
    <p>An online image converter for Espruino...</p>
 
    <input type="file" id="fileLoader"/><br/>
-   <input type="checkbox" id="compression" onchange="imageLoaded()">Use Compression?</input><br/>
-   <input type="checkbox" id="alphaToColor" onchange="imageLoaded()">Transparency to Color</input><br/>
-   <input type="checkbox" id="transparent" onchange="imageLoaded()" checked>Transparency?</input><br/>
-   <input type="checkbox" id="inverted" onchange="imageLoaded()">Inverted?</input><br/>
-   <input type="checkbox" id="autoCrop" onchange="imageLoaded()">Crop?</input><br/>
-   Diffusion:
-   <select id="diffusion" onchange="imageLoaded()">
-   </select><br/>
+   <input type="checkbox" id="compression" onchange="imageLoaded()"> Use Compression?</input><br/>
+   <input type="checkbox" id="alphaToColor" onchange="imageLoaded()"> Transparency to Color</input><br/>
+   <input type="checkbox" id="transparent" onchange="imageLoaded()" checked> Transparency?</input><br/>
+   <input type="checkbox" id="inverted" onchange="imageLoaded()"> Inverted?</input><br/>
+   <input type="checkbox" id="autoCrop" onchange="imageLoaded()"> Crop?</input><br/>
+   Diffusion: <select id="diffusion" onchange="imageLoaded()"></select><br/>
 
-   Brightness:<input type="range" id="brightness" min="-127" max="127" value="0" onchange="imageLoaded()"></input><span id="brightnessv"></span><br/>
-   Contrast:<input type="range" id="contrast" min="-255" max="255" value="0" onchange="imageLoaded()"></input><span id="contrastv"></span><br/>
+   Brightness: <span id="brightnessv"></span>
+   <input type="range" id="brightness" min="-127" max="127" value="0" onchange="imageLoaded()"></input><br/>
+   Contrast: <span id="contrastv"></span>
+   <input type="range" id="contrast" min="-255" max="255" value="0" onchange="imageLoaded()"></input><br/>
    Colours: <select id="colorStyle" onchange="imageLoaded()"></select><br/>
    Output As: <select id="outputStyle" onchange="imageLoaded()">
    <option value="object" selected="selected">Image Object</option>
