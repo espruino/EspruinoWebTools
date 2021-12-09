@@ -96,7 +96,7 @@ ChangeLog:
         window.location = "https://itunes.apple.com/us/app/webble/id1193531073";
     } else {
       if (confirm("This Web Browser doesn't support Web Bluetooth.\nPlease click Ok to see instructions for enabling it."))
-        window.location = "https://www.espruino.com/Puck.js+Quick+Start";
+        window.location = "https://www.espruino.com/Quick+Start+BLE#with-web-bluetooth";
     }
     return false;
   }
