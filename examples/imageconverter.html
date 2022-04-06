@@ -21,8 +21,6 @@
    <input type="range" id="contrast" min="-255" max="255" value="0" onchange="imageLoaded()"></input><br/>
    Colours: <select id="colorStyle" onchange="imageLoaded()"></select><br/>
    Output As: <select id="outputStyle" onchange="imageLoaded()">
-   <option value="object" selected="selected">Image Object</option>
-   <option value="string">Image String</option>
    </select><br/>
 
    <canvas id="canvas" style="display:none;"></canvas>
@@ -35,6 +33,7 @@
      // load available colour formats and diffusion...
      imageconverter.setFormatOptions(document.getElementById("colorStyle"));
      imageconverter.setDiffusionOptions(document.getElementById("diffusion"));
+     imageconverter.setOutputOptions(document.getElementById("outputStyle"));
 
      var img;
      function imageLoaded() {
@@ -74,7 +73,7 @@
          options.rgbaOut = rgba;
          options.width = img.width;
          options.height = img.height;
-         imgstr = "var img = "+imageconverter.RGBAtoString(rgba, options);
+         imgstr = imageconverter.RGBAtoString(rgba, options);
          var outputImageData = new ImageData(options.rgbaOut, options.width, options.height);
          ctx.putImageData(outputImageData,img.width,0);
        }/* else { // output the image as slices
