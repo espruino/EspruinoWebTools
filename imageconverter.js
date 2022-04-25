@@ -488,7 +488,7 @@
       imgstr += '  buffer : '+strPrefix+'(atob("'+btoa(str)+'")'+strPostfix+'\n';
       imgstr += "}";
     } else if (options.output=="string") {
-      imgstr = strPrefix+'atob("'+btoa(str)+'")+strPostfix';
+      imgstr = strPrefix+'atob("'+btoa(str)+'")'+strPostfix;
     } else if (options.output=="gfxstring") {
       imgstr = strPrefix+'atob("'+btoa("\0"+str)+'")'+strPostfix;
     } else {
