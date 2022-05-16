@@ -250,7 +250,7 @@ ChangeLog:
         rxCharacteristic.addEventListener('characteristicvaluechanged', function(event) {
           var dataview = event.target.value;
           var data = ab2str(dataview.buffer);
-          if (data.length > chunkSize) {
+          if (puck.increaseMTU && (data.length > chunkSize)) {
             log(2, "Received packet of length "+data.length+", increasing chunk size");
             chunkSize = data.length;
           }
@@ -400,6 +400,10 @@ ChangeLog:
   var puck = {
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
+    /** When we receive more than 23 bytes, should we increase the chunk size we use
+    for writing to match it? Normally this is fine but it seems some phones have
+    a broken bluetooth implementation that doesn't allow it. */
+    increaseMTU : true,
     /// Should we use flow control? Default is true
     flowControl : true,
     /// Used internally to write log information - you can replace this with your own function
