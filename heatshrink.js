@@ -1,5 +1,7 @@
 /*
   Compiled to JS with Emscripten by Gordon Williams <gw@espruino.com>
+  https://github.com/espruino/EspruinoWebTools/heatshrink.js
+
   heatshrink_config.h matches that of Espruino.
   Source for conversion at http://github.com/gfwilliams/heatshrink-js
 */

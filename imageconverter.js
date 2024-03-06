@@ -1,15 +1,12 @@
-/* Copyright 2020 Gordon Williams, gw@pur3.co.uk
+/* Copyright 2024 Gordon Williams, gw@pur3.co.uk
    https://github.com/espruino/EspruinoWebTools
 */
 (function (root, factory) {
-    if (typeof define === 'function' && define.amd) {
-        // AMD. Register as an anonymous module.
-        define(['b'], factory);
-    } else if (typeof module === 'object' && module.exports) {
+    if (typeof module === 'object' && module.exports) {
         // Node. Does not work with strict CommonJS, but
         // only CommonJS-like environments that support module.exports,
         // like Node.
-        module.exports = factory(require('b'));
+        module.exports = factory(root.heatshrink);
     } else {
         // Browser globals (root is window)
         root.imageconverter = factory(root.heatshrink);
