@@ -213,6 +213,7 @@ ChangeLog:
         filters:[
           { namePrefix: 'Puck.js' },
           { namePrefix: 'Pixl.js' },
+          { namePrefix: 'Jolt.js' },
           { namePrefix: 'MDBT42Q' },
           { namePrefix: 'Bangle.js' },
           { namePrefix: 'Espruino' },
