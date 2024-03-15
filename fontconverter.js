@@ -112,8 +112,11 @@ function FontGlyph(font, ch, getPixel) {
 // Populate the `glyphs` array with a range of glyphs
 Font.prototype.generateGlyphs = function(getCharPixel) {
   this.range.forEach(range => {
-    for (let ch=range.min; ch<=range.max; ch++)
-      this.glyphs[ch] = this.getGlyph(ch, (x,y) => getCharPixel(ch,x,y));
+    for (let ch=range.min; ch<=range.max; ch++) {
+      let glyph = this.getGlyph(ch, (x,y) => getCharPixel(ch,x,y));
+      if (glyph)
+        this.glyphs[ch] = glyph;
+    }
   });
 };
 
@@ -193,6 +196,7 @@ FontGlyph.prototype.appendBits = function(bits, info) {
       }
     }
     if (xStart>xEnd) {
+      if (ch != 32) return undefined; // if it's empty and not a space, ignore it!
       xStart=0;
       xEnd = this.fmWidth >> 1; // treat spaces as half-width
     } else if (xEnd<this.fmWidth-1)
@@ -692,7 +696,7 @@ function getRanges() {
     "Numeric" : {range : [{ min : 46, max : 58 }] },
     "ISO8859-1":  {range : [{ min : 32, max : 255 }] },
     "Extended":  {range : [{ min : 32, max : 1103 }] }, // 150 languages + Cyrillic
-    "All":  {range : [{ min : 32, max : 0x9FAF }] },
+    "All":  {range : [{ min : 32, max : 0xFFFF }] },
     "Chinese":  {range : [{ min : 32, max : 255 }, { min : 0x4E00, max : 0x9FAF }] },
     "Korean":  {range : [{ min : 32, max : 255 }, { min : 0x1100, max : 0x11FF }, { min : 0x3130, max : 0x318F }, { min : 0xA960, max : 0xA97F }, { min : 0xD7B0, max : 0xD7FF }] },
     "Japanese":  {range : [{ min : 32, max : 255 }, { min : 0x3000, max : 0x30FF }, { min : 0x4E00, max : 0x9FAF }, { min : 0xFF00, max : 0xFFEF }] },
