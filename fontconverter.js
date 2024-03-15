@@ -1,7 +1,22 @@
-/* Copyright 2023 Gordon Williams, gw@pur3.co.uk
-   https://github.com/espruino/EspruinoWebTools/fontconverter.js
+/* https://github.com/espruino/EspruinoWebTools/fontconverter.js
 
+ Copyright (C) 2024 Gordon Williams <gw@pur3.co.uk>
+
+ This Source Code Form is subject to the terms of the Mozilla Public
+ License, v. 2.0. If a copy of the MPL was not distributed with this
+ file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+ ----------------------------------------------------------------------------------------
   Bitmap font creator for Espruino Graphics custom fonts
+
+  Takes input as a PNG font map, PBFF, or bitfontmaker2 JSON
+
+  Outputs in various formats to make a custom font
+ ----------------------------------------------------------------------------------------
+
+Requires:
+
+npm install btoa pngjs
 */
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
@@ -18,7 +33,7 @@
   }
 }(typeof self !== 'undefined' ? self : this, function(heatshrink) {
 
-// npm install btoa pngjs
+
 
 function bitsToBytes(bits, bpp) {
   var bytes = [];
@@ -45,7 +60,9 @@ function bitsToBytes(bits, bpp) {
   fn
   mapWidth,mapHeight
   mapOffsetX, mapOffsetY
-  height
+  bpp                               // optional (default 1)
+  height                            // height of individual character
+  range : [ {min, max}, {min,max} ] // for characters to use
 }
 */
 function Font(info) {
@@ -54,9 +71,12 @@ function Font(info) {
   this.fn = info.fn;
   this.height = info.height;
   this.bpp = info.bpp||1;
-  this.firstChar = (info.firstChar!==undefined) ? info.firstChar : 32;
-  this.maxChars = info.maxChars || (256-this.firstChar);
-  this.lastChar = this.firstChar + this.maxChars - 1;
+
+  this.range = info.range;
+  if (!this.range)
+    this.range = getRanges().ASCII.range;
+
+
   this.fixedWidth = !!info.fixedWidth;
   this.fullHeight = !!info.fullHeight; // output fonts at the full height available
   this.glyphPadX = 1; // padding at the end of glyphs (needed for old-style JS fonts)
@@ -70,6 +90,17 @@ function Font(info) {
   this.mapOffsetY = 0|info.mapOffsetY;
 }
 
+/*
+    font            // owning font
+    ch              // character number this represents
+    getPixel(x,y)   // function to get a pixel within the font
+    xStart
+    yStart
+    xEnd
+    yEnd
+    height
+    advance
+*/
 function FontGlyph(font, ch, getPixel) {
   this.font = font;
   this.ch = ch;
@@ -80,8 +111,10 @@ function FontGlyph(font, ch, getPixel) {
 
 // Populate the `glyphs` array with a range of glyphs
 Font.prototype.generateGlyphs = function(getCharPixel) {
-  for (let ch=this.firstChar; ch<=this.lastChar; ch++)
-    this.glyphs[ch] = this.getGlyph(ch, (x,y) => getCharPixel(ch,x,y));
+  this.range.forEach(range => {
+    for (let ch=range.min; ch<=range.max; ch++)
+      this.glyphs[ch] = this.getGlyph(ch, (x,y) => getCharPixel(ch,x,y));
+  });
 };
 
 // Append the bits to define this glyph to the array 'bits'
@@ -188,7 +221,6 @@ FontGlyph.prototype.appendBits = function(bits, info) {
 
 // Load a 16x16 charmap file (or mapWidth x mapHeight)
 function loadPNG(fontInfo) {
-  fontInfo = new Font(fontInfo);
   var PNG = require("pngjs").PNG;
   var png = PNG.sync.read(require("fs").readFileSync(fontInfo.fn));
 
@@ -223,7 +255,6 @@ function loadPNG(fontInfo) {
 }
 
 function loadJSON(fontInfo) {
-  fontInfo = new Font(fontInfo);
   // format used by https://www.pentacom.jp/pentacom/bitfontmaker2/editfont.php import/export
   var font = JSON.parse(require("fs").readFileSync(fontInfo.fn).toString());
   fontInfo.fmWidth = 16;
@@ -238,7 +269,6 @@ function loadJSON(fontInfo) {
 
 function loadPBFF(fontInfo) {
   // format used by https://github.com/pebble-dev/renaissance/tree/master/files
-  fontInfo = new Font(fontInfo);
   fontInfo.fmWidth = 0;
   fontInfo.fmHeight = fontInfo.height;
   fontInfo.glyphPadX = 0;
@@ -283,6 +313,7 @@ function loadPBFF(fontInfo) {
 }
 
 function load(fontInfo) {
+  fontInfo = new Font(fontInfo);
   if (fontInfo.fn && fontInfo.fn.endsWith("png")) return loadPNG(fontInfo);
   else if (fontInfo.fn && fontInfo.fn.endsWith("json")) return loadJSON(fontInfo);
   else if (fontInfo.fn && fontInfo.fn.endsWith("pbff")) return loadPBFF(fontInfo);
@@ -313,12 +344,49 @@ Font.prototype.debugChars = function() {
   });
 };
 
+/* GNU unifont puts in placeholders for unimplemented chars -
+ big filled blocks with the 4 digit char code. This detects these
+ and removes them */
+Font.prototype.removeUnifontPlaceholders = function() {
+  Object.keys(this.glyphs).forEach(ch => {
+    let glyph = this.glyphs[ch];
+    if (glyph.xStart==1 && glyph.yStart==1 && glyph.xEnd==15 && glyph.yEnd==14) {
+      let borderEmpty = true;
+      let edgesFilled = true;
+      for (let x=1;x<15;x++) {
+        if (glyph.getPixel(x,0)) borderEmpty = false;
+        if (!glyph.getPixel(x,1)) edgesFilled = false;
+        if (!glyph.getPixel(x,7)) edgesFilled = false;
+        if (!glyph.getPixel(x,8)) edgesFilled = false;
+        if (!glyph.getPixel(x,14)) edgesFilled = false;
+        if (glyph.getPixel(x,15)) borderEmpty = false;
+  //      console.log(x, glyph.getPixel(x,0), glyph.getPixel(x,1))
+      }
+      for (let y=1;y<14;y++) {
+        if (glyph.getPixel(0,y)) borderEmpty = false;
+        if (!glyph.getPixel(1,y)) edgesFilled = false;
+        if (!glyph.getPixel(2,y)) edgesFilled = false;
+        if (!glyph.getPixel(7,y)) edgesFilled = false;
+        if (!glyph.getPixel(8,y)) edgesFilled = false;
+        if (!glyph.getPixel(13,y)) edgesFilled = false;
+        if (!glyph.getPixel(14,y)) edgesFilled = false;
+      }
+      if (borderEmpty && edgesFilled) {
+        // it's a placeholder!
+        // glyph.debug();
+        delete this.glyphs[ch]; // remove it
+      }
+    }
+  });
+};
+
 // Outputs as JavaScript for a custom font
 Font.prototype.getJS = function(options) {
   // options.compressed
   options = options||{};
   this.glyphPadX = 1;
-  var charMin = Object.keys(this.glyphs)[0];
+  var charCodes = Object.keys(this.glyphs).sort();
+  var charMin = charCodes[0];
   // stats
   var minY = this.height;
   var maxY = 0;
@@ -361,12 +429,6 @@ Font.prototype.getJS = function(options) {
     encodedFont = "atob('" + btoa(String.fromCharCode.apply(null, fontData)) + "')";
   }
 
-/*  return `
-var font = atob("${require('btoa')(bytes)}");
-var widths = atob("${require('btoa')(widthBytes)}");
-g.setFontCustom(font, ${this.firstChar}, widths, ${this.height} | ${this.bpp<<16});
-`;*/
-
   return `Graphics.prototype.setFont${this.id} = function() {
   // Actual height ${maxY+1-minY} (${maxY} - ${minY})
   // ${this.bpp} BPP
@@ -385,6 +447,10 @@ Font.prototype.getHeaderFile = function() {
   var packedChars = 5;
   var packedPixels = 6;
 
+  var charCodes = Object.keys(this.glyphs).sort();
+  var charMin = charCodes[0];
+  var charMax = charCodes[charCodes.length-1];
+
   function genChar(font, glyph) {
     var r = [];
     for (var y=0;y<font.fmHeight;y++) {
@@ -398,8 +464,8 @@ Font.prototype.getHeaderFile = function() {
   }
 
   var header = "";
-  var ch = this.firstChar;
-  while (ch <= this.lastChar) {
+  var ch = charMin;
+  while (ch <= charMax) {
     var chars = [];
     for (var i=0;i<packedChars;i++) {
       var glyph = this.glyphs[ch];
@@ -430,7 +496,7 @@ Font.prototype.getPBF = function() {
   this.fullHeight = false; // TODO: too late?
   // now go through all glyphs
   var glyphs = [];
-  var hashtableSize = ((this.lastChar-this.firstChar)>1000) ? 255 : 64;
+  var hashtableSize = ((this.glyphs.length)>1000) ? 255 : 64;
   var hashes = [];
   for (var i=0;i<hashtableSize;i++)
     hashes[i] = [];
@@ -618,13 +684,27 @@ JsVar *jswrap_graphics_setFont${options.name}(JsVar *parent) {
 `);
 };
 
+function getRanges() {
+  // https://arxiv.org/pdf/1801.07779.pdf#page=5 is handy to see what covers most writing
+  return { // https://www.unicode.org/charts/
+    "ASCII" : {range : [{ min : 32, max : 127 }] },
+    "ASCII Capitals" : {range : [{ min : 32, max : 93 }] },
+    "Numeric" : {range : [{ min : 46, max : 58 }] },
+    "ISO8859-1":  {range : [{ min : 32, max : 255 }] },
+    "Extended":  {range : [{ min : 32, max : 1103 }] }, // 150 languages + Cyrillic
+    "All":  {range : [{ min : 32, max : 0x9FAF }] },
+    "Chinese":  {range : [{ min : 32, max : 255 }, { min : 0x4E00, max : 0x9FAF }] },
+    "Korean":  {range : [{ min : 32, max : 255 }, { min : 0x1100, max : 0x11FF }, { min : 0x3130, max : 0x318F }, { min : 0xA960, max : 0xA97F }, { min : 0xD7B0, max : 0xD7FF }] },
+    "Japanese":  {range : [{ min : 32, max : 255 }, { min : 0x3000, max : 0x30FF }, { min : 0x4E00, max : 0x9FAF }, { min : 0xFF00, max : 0xFFEF }] },
+  };
+}
+
 
 /* load() loads a font. fontInfo should be:
   {
     fn : "font6x8.png", // currently a built-in font
     height : 8, // actual used height of font map
-    firstChar : 32,
-    maxChars :  256-32
+    range : [ min:32, max:255 ]
   }
 
   or:
@@ -632,9 +712,8 @@ JsVar *jswrap_graphics_setFont${options.name}(JsVar *parent) {
   {
     fn : "renaissance_28.pbff",
     height : 28, // actual used height of font map
-    firstChar : 32,
+    range : [ min:32, max:255 ]
     yOffset : 4,
-    maxChars : 256-32
   }
 
   or for a font made using https://www.pentacom.jp/pentacom/bitfontmaker2/
@@ -642,19 +721,35 @@ JsVar *jswrap_graphics_setFont${options.name}(JsVar *parent) {
   {
     fn : "bitfontmaker2_14px.json",
     height : 14, // actual used height of font map
-    firstChar : 32,
-    maxChars : 256-32
+    range : [ min:32, max:255 ]
   }
 
 
   Afterwards returns a Font object populated with the args given, and
   a `function getCharPixel(ch,x,y)` which can be used to get the font data
+
+
+load returns a `Font` class which contains:
+
+
+  'generateGlyphs',   // used internally to create the `glyphs` array
+  'getGlyph',         // used internally to create the `glyphs` array
+  'debugPixelsUsed',  // show how many pixels used on each row
+  'debugChars',       // dump all loaded chars
+  'removeUnifontPlaceholders' // for GNU unitfont, remove placeholder characters
+  'getJS',            // return the font as JS - only works for <1000 chars
+  'getHeaderFile',    // return the font as a C header file (uses data for each char including blank ones)
+  'getPBF',           // return a binary PBF file
+                      //  eg. require("fs").writeFileSync("font.pbf", Buffer.from(font.getPBF()))
+  'getPBFAsC'         // return a binary PBF file, but as a C file that can be included in Espruino
+
 */
 
 
   // =======================================================
   return {
     Font : Font,
-    load : load,
+    load : load, // load a font from a file (see above)
+    getRanges : getRanges // get list of possible ranges of characters
   };
 }));
