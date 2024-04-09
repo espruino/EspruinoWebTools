@@ -698,7 +698,7 @@ function getRanges() {
     "Extended":  {range : [{ min : 32, max : 1103 }] }, // 150 languages + Cyrillic
     "All":  {range : [{ min : 32, max : 0xFFFF }] },
     "Chinese":  {range : [{ min : 32, max : 255 }, { min : 0x4E00, max : 0x9FAF }] },
-    "Korean":  {range : [{ min : 32, max : 255 }, { min : 0x1100, max : 0x11FF }, { min : 0x3130, max : 0x318F }, { min : 0xA960, max : 0xA97F }, { min : 0xD7B0, max : 0xD7FF }] },
+    "Korean":  {range : [{ min : 32, max : 255 }, { min : 0x1100, max : 0x11FF }, { min : 0x3130, max : 0x318F }, { min : 0xA960, max : 0xA97F }, { min : 0xAC00, max : 0xD7FF }] },
     "Japanese":  {range : [{ min : 32, max : 255 }, { min : 0x3000, max : 0x30FF }, { min : 0x4E00, max : 0x9FAF }, { min : 0xFF00, max : 0xFFEF }] },
   };
 }
