@@ -33,7 +33,32 @@ npm install btoa pngjs
   }
 }(typeof self !== 'undefined' ? self : this, function(heatshrink) {
 
-
+if ("undefined"==typeof btoa) btoa = function (input) {
+    var b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    var out = "";
+    var i=0;
+    while (i<input.length) {
+      var octet_a = 0|input.charCodeAt(i++);
+      var octet_b = 0;
+      var octet_c = 0;
+      var padding = 0;
+      if (i<input.length) {
+        octet_b = 0|input.charCodeAt(i++);
+        if (i<input.length) {
+          octet_c = 0|input.charCodeAt(i++);
+          padding = 0;
+        } else
+          padding = 1;
+      } else
+        padding = 2;
+      var triple = (octet_a << 0x10) + (octet_b << 0x08) + octet_c;
+      out += b64[(triple >> 18) & 63] +
+             b64[(triple >> 12) & 63] +
+             ((padding>1)?'=':b64[(triple >> 6) & 63]) +
+             ((padding>0)?'=':b64[triple & 63]);
+    }
+    return out;
+  };
 
 function bitsToBytes(bits, bpp) {
   var bytes = [];
@@ -118,6 +143,11 @@ Font.prototype.generateGlyphs = function(getCharPixel) {
         this.glyphs[ch] = glyph;
     }
   });
+};
+
+// Is the given char code (int) in a range?
+Font.prototype.isChInRange = function(ch) {
+  return this.range.some(range => ch>=range.min && ch<=range.max);
 };
 
 // Append the bits to define this glyph to the array 'bits'
@@ -316,11 +346,76 @@ function loadPBFF(fontInfo) {
   return fontInfo;
 }
 
+function loadBDF(fontInfo) {
+  var fontCharSet = "";
+  var fontCharCode = 0;
+  var fontBitmap = undefined;
+  var fontBoundingBox = [0,0,0,0];
+  var fontChars = [];
+  var COMMENTS = "", FONTNAME = "";
+  var glyphs = [];
+
+  require("fs").readFileSync(fontInfo.fn).toString().split("\n").forEach((line,lineNo) => {
+    //console.log(lineNo);
+    if (line.startsWith("ENCODING")) {
+      fontCharCode = parseInt(line.substr("ENCODING".length).trim());
+      //console.log("CODE "+fontCharCode);
+      fontBoundingBox = [0,0,0,0];
+    }
+    if (line.startsWith("CHARSET_REGISTRY"))
+      fontCharSet = JSON.parse(line.split(" ")[1].trim());
+    if (line.startsWith("COPYRIGHT"))
+      COMMENTS += "// Copyright "+line.substr(9).trim()+"\n";
+    if (line.startsWith("COMMENT"))
+      COMMENTS += "// "+line.substr(7).trim()+"\n";
+    if (line.startsWith("FONT"))
+      FONTNAME += "// "+line.substr(4).trim();
+    if (line.startsWith("FONTBOUNDINGBOX")) {
+      let box = line.split(/\s+/);
+      fontInfo.fmWidth = parseInt(box[1]);
+      fontInfo.height = fontInfo.fmHeight = parseInt(box[2]);
+    }
+    if (line=="ENDCHAR" && fontBitmap) {
+      var fontChar = String.fromCharCode(fontCharCode);
+      if (fontBitmap && fontInfo.isChInRange(fontCharCode)) {
+        let bmp = fontBitmap; // separate copy for this getGlyph fn
+        let glyph = fontInfo.getGlyph(fontCharCode, (x,y) => {
+          if (y<0 || y>=bmp.length) return 0;
+          return bmp[y][x]=="1" ? 1 : 0;
+         } );
+         if (glyph)
+           glyphs.push(glyph);
+      }
+      fontCharCode = -1;
+      fontBitmap=undefined;
+    }
+    if (line.startsWith("BBX ")) { // per character bounding box
+      fontBoundingBox = line.split(" ").slice(1).map(x=>parseInt(x));
+    }
+    if (fontBitmap!==undefined) {
+      var l = "";
+      for (var i=0;i<line.length;i++) {
+        var c = parseInt(line[i],16);
+        l += ((c+16).toString(2)).substr(-4).replace(/0/g," ");
+      }
+      fontBitmap.push(l);
+    }
+    if (line=="BITMAP") {
+      fontBitmap=[];
+    }
+  });
+  glyphs.sort((a,b) => a.ch - b.ch);
+  glyphs.forEach(g => fontInfo.glyphs[g.ch] = g);
+  return fontInfo;
+}
+
+
 function load(fontInfo) {
   fontInfo = new Font(fontInfo);
   if (fontInfo.fn && fontInfo.fn.endsWith("png")) return loadPNG(fontInfo);
   else if (fontInfo.fn && fontInfo.fn.endsWith("json")) return loadJSON(fontInfo);
   else if (fontInfo.fn && fontInfo.fn.endsWith("pbff")) return loadPBFF(fontInfo);
+  else if (fontInfo.fn && fontInfo.fn.endsWith("bdf")) return loadBDF(fontInfo);
   else throw new Error("Unknown font type");
 }
 
@@ -389,7 +484,7 @@ Font.prototype.getJS = function(options) {
   // options.compressed
   options = options||{};
   this.glyphPadX = 1;
-  var charCodes = Object.keys(this.glyphs).sort();
+  var charCodes = this.glyphs.map(g=>g.ch).sort((a,b)=>a-b);
   var charMin = charCodes[0];
   // stats
   var minY = this.height;
