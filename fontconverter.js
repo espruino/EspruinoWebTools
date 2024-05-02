@@ -214,13 +214,13 @@ FontGlyph.prototype.appendBits = function(bits, info) {
   } else {
     xStart = this.fmWidth;
     xEnd = 0;
-    for (var x=0;x<this.fmWidth;x++) {
-      for (var y=0;y<this.fmHeight;y++) {
+    for (var y=0;y<this.fmHeight;y++) {
+      for (var x=0;x<this.fmWidth;x++) {
         var set = glyph.getPixel(x,y);
         if (set) {
           // check X max value
           if (x<xStart) xStart = x;
-          xEnd = x;
+          if (x>xEnd) xEnd = x;
           // check Y max/min
           if (y<yStart) yStart = y;
           if (y>yEnd) yEnd = y;
@@ -236,9 +236,8 @@ FontGlyph.prototype.appendBits = function(bits, info) {
   glyph.width = xEnd+1-xStart;
   glyph.xStart = xStart;
   glyph.xEnd = xEnd;
-  glyph.advance = glyph.width;
-  if (xEnd<this.fmWidth-1)
-    glyph.advance += this.glyphPadX; // if not full width, add a space after
+  glyph.advance = glyph.xEnd+1;
+  glyph.advance += this.glyphPadX; // if not full width, add a space after
   if (!this.glyphPadX) glyph.advance++; // hack - add once space of padding
 
   if (this.fullHeight) {
@@ -252,6 +251,12 @@ FontGlyph.prototype.appendBits = function(bits, info) {
   glyph.yStart = yStart;
   glyph.yEnd = yEnd;
   glyph.height = yEnd+1-yStart;
+
+/*  if (ch == 41) {
+    glyph.debug();
+    console.log(glyph);
+    process.exit(1);
+  }*/
 
   return glyph;
 };
