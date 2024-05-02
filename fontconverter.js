@@ -476,7 +476,7 @@ Font.prototype.debugChars = function() {
  and removes them */
 Font.prototype.removeUnifontPlaceholders = function() {
   this.glyphs.forEach(glyph => {
-    if (glyph.xStart==1 && glyph.yStart==1 && glyph.xEnd==15 && glyph.yEnd==14) {
+    if (glyph.xStart==1 && glyph.yStart==1 && glyph.xEnd==14 && glyph.yEnd==14) {
       let borderEmpty = true;
       let edgesFilled = true;
       for (let x=1;x<15;x++) {
