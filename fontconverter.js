@@ -186,14 +186,16 @@ FontGlyph.prototype.appendBits = function(bits, info) {
  };
 
  FontGlyph.prototype.debug = function() {
-  var map = ".#";//"░█";
+  var map = "░█";
   if (this.font.bpp==2) map = "░▒▓█";
   var debugText = [];
-  for (var y=0;y<this.font.fmHeight;y++) debugText.push("");
-  for (var x=this.xStart;x<=this.xEnd;x++) {
-    for (var y=0;y<this.font.fmHeight;y++) {
-      var col = this.getPixel(x,y);
-      debugText[y] += (y>=this.yStart && y<=this.yEnd) ? map[col] : ".";
+  for (var y=0;y<this.font.fmHeight;y++) {
+    debugText[y]="";
+    for (var x=0;x<this.advance;x++) {
+      var px = ".";
+      if (x>=this.xStart && x<=this.xEnd && y>=this.yStart && y<=this.yEnd)
+        px = map[this.getPixel(x,y)];
+      debugText[y] += px;
     }
   }
   console.log("charcode ", this.ch);
@@ -229,13 +231,14 @@ FontGlyph.prototype.appendBits = function(bits, info) {
       if (ch != 32) return undefined; // if it's empty and not a space, ignore it!
       xStart=0;
       xEnd = this.fmWidth >> 1; // treat spaces as half-width
-    } else if (xEnd<this.fmWidth-1)
-      xEnd += this.glyphPadX; // if not full width, add a space after
+    }
   }
   glyph.width = xEnd+1-xStart;
   glyph.xStart = xStart;
   glyph.xEnd = xEnd;
   glyph.advance = glyph.width;
+  if (xEnd<this.fmWidth-1)
+    glyph.advance += this.glyphPadX; // if not full width, add a space after
   if (!this.glyphPadX) glyph.advance++; // hack - add once space of padding
 
   if (this.fullHeight) {
@@ -351,17 +354,14 @@ function loadBDF(fontInfo) {
   var fontCharCode = 0;
   var fontBitmap = undefined;
   var fontBoundingBox = [0,0,0,0];
-  var fontChars = [];
+  var charBoundingBox = [0,0,0,0];
+  var charAdvance = 0;
   var COMMENTS = "", FONTNAME = "";
   var glyphs = [];
+  // https://en.wikipedia.org/wiki/Glyph_Bitmap_Distribution_Format
 
   require("fs").readFileSync(fontInfo.fn).toString().split("\n").forEach((line,lineNo) => {
-    //console.log(lineNo);
-    if (line.startsWith("ENCODING")) {
-      fontCharCode = parseInt(line.substr("ENCODING".length).trim());
-      //console.log("CODE "+fontCharCode);
-      fontBoundingBox = [0,0,0,0];
-    }
+    // Font stuff
     if (line.startsWith("CHARSET_REGISTRY"))
       fontCharSet = JSON.parse(line.split(" ")[1].trim());
     if (line.startsWith("COPYRIGHT"))
@@ -371,29 +371,53 @@ function loadBDF(fontInfo) {
     if (line.startsWith("FONT"))
       FONTNAME += "// "+line.substr(4).trim();
     if (line.startsWith("FONTBOUNDINGBOX")) {
-      let box = line.split(/\s+/);
-      fontInfo.fmWidth = parseInt(box[1]);
-      fontInfo.height = fontInfo.fmHeight = parseInt(box[2]);
+      fontBoundingBox = line.split(" ").slice(1).map(x=>parseInt(x));
+      fontInfo.fmWidth = fontBoundingBox[0];
+      fontInfo.height = fontInfo.fmHeight = fontBoundingBox[1] - fontBoundingBox[3];
+    }
+    // Character stuff
+    if (line.startsWith("STARTCHAR")) {
+      fontCharCode = undefined;
+      charBoundingBox = [0,0,0,0];
+      charAdvance = 0;
+      fontBitmap=undefined;
+    }
+    if (line.startsWith("ENCODING")) {
+      fontCharCode = parseInt(line.substr("ENCODING".length).trim());
+    }
+    if (line.startsWith("BBX ")) { // per character bounding box
+      charBoundingBox = line.split(" ").slice(1).map(x=>parseInt(x));
+    }
+    if (line.startsWith("DWIDTH ")) { // per character bounding box
+      charAdvance = parseInt(line.split(" ")[1]);
     }
     if (line=="ENDCHAR" && fontBitmap) {
-      var fontChar = String.fromCharCode(fontCharCode);
       if (fontBitmap && fontInfo.isChInRange(fontCharCode)) {
+        // first we need to pad this out
+        var blankLine = " ".repeat(fontInfo.fmWidth);
+        var linesBefore = fontBoundingBox[1]-(charBoundingBox[3]+charBoundingBox[1]);
+        for (var i=0;i<linesBefore;i++)
+          fontBitmap.unshift(blankLine);
+        while (fontBitmap.length < fontInfo.fmHeight)
+          fontBitmap.push(blankLine);
+
         let bmp = fontBitmap; // separate copy for this getGlyph fn
         let glyph = fontInfo.getGlyph(fontCharCode, (x,y) => {
           if (y<0 || y>=bmp.length) return 0;
           return bmp[y][x]=="1" ? 1 : 0;
          } );
-         if (glyph)
-           glyphs.push(glyph);
+       if (glyph) {
+         // glyph.advance = charAdvance; // overwrite calculated advance value with one from file
+         glyphs.push(glyph);
+       }
       }
       fontCharCode = -1;
       fontBitmap=undefined;
     }
-    if (line.startsWith("BBX ")) { // per character bounding box
-      fontBoundingBox = line.split(" ").slice(1).map(x=>parseInt(x));
-    }
     if (fontBitmap!==undefined) {
       var l = "";
+      for (var i=0;i<charBoundingBox[2];i++)
+        l += " "; // padding
       for (var i=0;i<line.length;i++) {
         var c = parseInt(line[i],16);
         l += ((c+16).toString(2)).substr(-4).replace(/0/g," ");
@@ -424,8 +448,7 @@ function load(fontInfo) {
 Font.prototype.debugPixelsUsed = function() {
   var pixelsUsedInRow = new Array(this.height);
   pixelsUsedInRow.fill(0);
-  Object.keys(this.glyphs).forEach(ch => {
-    var glyph = this.glyphs[ch];
+  this.glyphs.forEach(glyph => {
     for (var x=glyph.xStart;x<=glyph.xEnd;x++) {
       for (var y=0;y<this.height;y++) {
         var col = glyph.getPixel(x,y);
@@ -437,8 +460,8 @@ Font.prototype.debugPixelsUsed = function() {
 };
 
 Font.prototype.debugChars = function() {
-  Object.keys(this.glyphs).forEach(ch => {
-    this.glyphs[ch].debug();
+  this.glyphs.forEach(glyph => {
+    glyph.debug();
     console.log();
   });
 };
@@ -447,8 +470,7 @@ Font.prototype.debugChars = function() {
  big filled blocks with the 4 digit char code. This detects these
  and removes them */
 Font.prototype.removeUnifontPlaceholders = function() {
-  Object.keys(this.glyphs).forEach(ch => {
-    let glyph = this.glyphs[ch];
+  this.glyphs.forEach(glyph => {
     if (glyph.xStart==1 && glyph.yStart==1 && glyph.xEnd==15 && glyph.yEnd==14) {
       let borderEmpty = true;
       let edgesFilled = true;
@@ -473,7 +495,7 @@ Font.prototype.removeUnifontPlaceholders = function() {
       if (borderEmpty && edgesFilled) {
         // it's a placeholder!
         // glyph.debug();
-        delete this.glyphs[ch]; // remove it
+        delete this.glyphs[glyph.ch]; // remove it
       }
     }
   });
@@ -484,35 +506,34 @@ Font.prototype.getJS = function(options) {
   // options.compressed
   options = options||{};
   this.glyphPadX = 1;
-  var charCodes = this.glyphs.map(g=>g.ch).sort((a,b)=>a-b);
+  var charCodes = this.glyphs.map(g=>g.ch).filter(c=>c!==undefined).sort((a,b)=>a-b);
   var charMin = charCodes[0];
+  var charMax = charCodes[charCodes.length-1];
+  console.log(`Outputting char range ${charMin}..${charMax}`);
   // stats
   var minY = this.height;
   var maxY = 0;
   // get an array of bits
   var bits = [];
   var charGlyphs = [];
-  Object.keys(this.glyphs).forEach(ch => {
-    var glyph = this.glyphs[ch];
+  var fontWidths = new Array(charMax+1);
+  fontWidths.fill(0);
+  this.glyphs.forEach(glyph => {
     if (glyph.yEnd > maxY) maxY = glyph.yEnd;
     if (glyph.yStart < minY) minY = glyph.yStart;
-  });
-  Object.keys(this.glyphs).forEach(ch => {
-    var glyph = this.glyphs[ch];
-    glyph.xStart = 0; // all glyphs have to start at 0 now
+    // all glyphs have go 0...advance-1 now as we have no way to offset
+    glyph.xStart = 0;
     glyph.yStart = 0;
-    glyph.xEnd = glyph.width-1;
+    glyph.xEnd = glyph.advance-1;
     glyph.yEnd = this.height-1;
+    glyph.width = glyph.xEnd + 1 - glyph.xStart;
     glyph.height = this.height;
     glyph.appendBits(bits, {glyphVertical:true});
+    // create width array - widthBytes
+    fontWidths[glyph.ch] = glyph.width;
   });
   // compact array
   var fontData = bitsToBytes(bits, this.bpp);
-  // convert width array - widthBytes
-  var fontWidths = [];
-  Object.keys(this.glyphs).forEach(ch => {
-    fontWidths[ch] = this.glyphs[ch].width;
-  });
   fontWidths = fontWidths.slice(charMin); // don't include chars before we're outputting
   var fixedWidth = fontWidths.every(w=>w==fontWidths[0]);
 
