@@ -506,7 +506,11 @@ Font.prototype.removeUnifontPlaceholders = function() {
   });
 };
 
-// Outputs as JavaScript for a custom font
+/* Outputs as JavaScript for a custom font.
+  options = {
+    compressed : bool
+  }
+*/
 Font.prototype.getJS = function(options) {
   // options.compressed
   options = options||{};
@@ -613,7 +617,7 @@ Font.prototype.getHeaderFile = function() {
   return header;
 }
 
-// Output as a PBF file
+// Output as a PBF file, returns as a Uint8Array
 Font.prototype.getPBF = function() {
   // https://github.com/pebble-dev/wiki/wiki/Firmware-Font-Format
   // setup to ensure we're not writing entire glyphs
@@ -809,19 +813,70 @@ JsVar *jswrap_graphics_setFont${options.name}(JsVar *parent) {
 `);
 };
 
+// Renders the given text to a on object { width, height, bpp:32, data : Uint32Array }
+Font.prototype.renderString = function(text) {
+  // work out width
+  var width = 0;
+  for (var i=0;i<text.length;i++) {
+    var ch = text.charCodeAt(i);
+    if (!this.glyphs[ch]) continue;
+    width += this.glyphs[ch].advance;
+  }
+  // allocate array
+  var bmp = new Uint32Array(width * this.height);
+  // render
+  const bpp = this.bpp;
+  var ox = 0;
+  for (var i=0;i<text.length;i++) {
+    var ch = text.charCodeAt(i);
+    if (!this.glyphs[ch]) continue;
+    var g = this.glyphs[ch];
+    for (var y=g.yStart;y<=g.yEnd;y++) {
+      for (var x=g.xStart;x<=g.yEnd;x++) {
+        var c  = g.getPixel(x,y) << 8-bpp;
+        c |= c>>bpp;
+        c |= c>>(bpp*2);
+        c |= c>>(bpp*4);
+        c = 255-c;
+        var px = x+ox;
+        if ((px>=0) && (px < width) && (y>=0) && (y<this.height))
+          bmp[px + (y*width)] = 0xFF000000 | (c<<16) | (c<<8) | c;
+      }
+    }
+    ox += this.glyphs[ch].advance;
+  }
+  // return
+  return {width : width, height : this.height, bpp : 32, data : bmp };
+};
+
+/* Outputs an object containing suggested sets of characters, with the following fields:
+{
+  id : {
+    id : string,
+    range : [ {min:int,max:int}, ... ],
+    text : string // test string
+    charCount : // number of characters in range
+  }
+}
+*/
 function getRanges() {
   // https://arxiv.org/pdf/1801.07779.pdf#page=5 is handy to see what covers most writing
-  return { // https://www.unicode.org/charts/
-    "ASCII" : {range : [{ min : 32, max : 127 }] },
-    "ASCII Capitals" : {range : [{ min : 32, max : 93 }] },
-    "Numeric" : {range : [{ min : 46, max : 58 }] },
-    "ISO8859-1":  {range : [{ min : 32, max : 255 }] },
-    "Extended":  {range : [{ min : 32, max : 1103 }] }, // 150 languages + Cyrillic
-    "All":  {range : [{ min : 32, max : 0xFFFF }] },
-    "Chinese":  {range : [{ min : 32, max : 255 }, { min : 0x4E00, max : 0x9FAF }] },
-    "Korean":  {range : [{ min : 32, max : 255 }, { min : 0x1100, max : 0x11FF }, { min : 0x3130, max : 0x318F }, { min : 0xA960, max : 0xA97F }, { min : 0xAC00, max : 0xD7FF }] },
-    "Japanese":  {range : [{ min : 32, max : 255 }, { min : 0x3000, max : 0x30FF }, { min : 0x4E00, max : 0x9FAF }, { min : 0xFF00, max : 0xFFEF }] },
+  var ranges = { // https://www.unicode.org/charts/
+    "ASCII" : {range : [{ min : 32, max : 127 }], text: "This is a test" },
+    "ASCII Capitals" : {range : [{ min : 32, max : 93 }], text: "THIS IS A TEST" },
+    "Numeric" : {range : [{ min : 46, max : 58 }], text:"0.123456789:/" },
+    "ISO8859-1":  {range : [{ min : 32, max : 255 }], text: "Thís îs ã tést" },
+    "Extended":  {range : [{ min : 32, max : 1103 }], text: "Thís îs ã tést" }, // 150 languages + Cyrillic
+    "All":  {range : [{ min : 32, max : 0xFFFF }], text: "이것 îs ã 测试" },
+    "Chinese":  {range : [{ min : 32, max : 255 }, { min : 0x4E00, max : 0x9FAF }], text: "这是一个测试" },
+    "Korean":  {range : [{ min : 32, max : 255 }, { min : 0x1100, max : 0x11FF }, { min : 0x3130, max : 0x318F }, { min : 0xA960, max : 0xA97F }, { min : 0xAC00, max : 0xD7FF }], text: "이것은 테스트입니다" },
+    "Japanese":  {range : [{ min : 32, max : 255 }, { min : 0x3000, max : 0x30FF }, { min : 0x4E00, max : 0x9FAF }, { min : 0xFF00, max : 0xFFEF }], text: "これはテストです" },
   };
+  for (var id in ranges) {
+    ranges[id].id = id;
+    ranges[id].charCount = ranges[id].range.reduce((a,r)=>a+r.max+1-r.min, 0);
+  }
+  return ranges;
 }
 
 
