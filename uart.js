@@ -35,15 +35,23 @@ Or more advanced usage with control of the connection
     if (!connection) throw "Error!";
     connection.on('data', function(d) { ... });
     connection.on('close', function() { ... });
+    connection.on('error', function() { ... });
     connection.write("1+2\n", function() {
       connection.close();
     });
   });
 
+You can also configure before opening a connection (see the bottom of this file for more info):
+
+UART.ports = ["Web Serial"]; // force only Web Serial to be used
+UART.debug = 3; // show all debug messages
+etc...
+
 ChangeLog:
 
 ...
-1v00: Auto-adjust BLE chunk size up if we receive >20 bytes in a packet
+1.01: Add UART.ports to allow available to user to be restricted
+1.00: Auto-adjust BLE chunk size up if we receive >20 bytes in a packet
       Drop UART.debug to 1 (less info printed)
       Fixed flow control on BLE
 */
@@ -91,7 +99,7 @@ ChangeLog:
   }
 
   var endpoints = [];
-  var WebBluetooth = {
+  endpoints.push({
     name : "Web Bluetooth",
     description : "Bluetooth LE devices",
     svg : '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none"/><path d="M17.71 7.71L12 2h-1v7.59L6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 11 14.41V22h1l5.71-5.71-4.3-4.29 4.3-4.29zM13 5.83l1.88 1.88L13 9.59V5.83zm1.88 10.46L13 18.17v-3.76l1.88 1.88z" fill="#ffffff"/></svg>',
@@ -190,6 +198,7 @@ ChangeLog:
           filters:[
             { namePrefix: 'Puck.js' },
             { namePrefix: 'Pixl.js' },
+            { namePrefix: 'Jolt.js' },
             { namePrefix: 'MDBT42Q' },
             { namePrefix: 'Bangle' },
             { namePrefix: 'RuuviTag' },
@@ -263,8 +272,8 @@ ChangeLog:
       });
       return connection;
     }
-  };
-  var WebSerial = {
+  });
+  endpoints.push({
     name : "Web Serial",
     description : "USB connected devices",
     svg : '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none"/><path d="M15 7v4h1v2h-3V5h2l-3-4-3 4h2v8H8v-2.07c.7-.37 1.2-1.08 1.2-1.93 0-1.21-.99-2.2-2.2-2.2-1.21 0-2.2.99-2.2 2.2 0 .85.5 1.56 1.2 1.93V13c0 1.11.89 2 2 2h3v3.05c-.71.37-1.2 1.1-1.2 1.95 0 1.22.99 2.2 2.2 2.2 1.21 0 2.2-.98 2.2-2.2 0-.85-.49-1.58-1.2-1.95V15h3c1.11 0 2-.89 2-2v-2h1V7h-4z" fill="#ffffff"/></svg>',
@@ -339,10 +348,7 @@ ChangeLog:
 
       return connection;
     }
-  };
-  // ======================================================================
-  endpoints.push(WebBluetooth);
-  endpoints.push(WebSerial);
+  });
   // ======================================================================
   var connection;
   function connect(callback) {
@@ -354,6 +360,18 @@ ChangeLog:
       txInProgress : false
     };
 
+    if (uart.ports.length==0) {
+      console.error(`UART: No ports in uart.ports`);
+      return;
+    }
+    if (uart.ports.length==1) {
+      var endpoint = endpoints.find(ep => ep.name == uart.ports[0]);
+      if (endpoint===undefined) {
+        console.error(`UART: Port Named "${uart.ports[0]}" not found`);
+        return;
+      }
+      return endpoint.connect(connection, callback);
+    }
     // modal
     var e = document.createElement('div');
     e.style = 'position:absolute;top:0px;left:0px;right:0px;bottom:0px;opacity:0.5;z-index:100;background:black;';
@@ -367,7 +385,12 @@ ChangeLog:
     var items = document.createElement('div');
     items.style = 'color:#000;background:#fff;padding:4px 8px 4px 8px;';
     menu.appendChild(items);
-    endpoints.forEach(function(endpoint) {
+    uart.ports.forEach(function(portName) {
+      var endpoint = endpoints.find(ep => ep.name == portName);
+      if (endpoint===undefined) {
+        console.error(`UART: Port Named "${portName}" not found`);
+        return;
+      }
       var supported = endpoint.isSupported();
       if (supported!==true)
         log(0, endpoint.name+" not supported, "+supported);
@@ -384,6 +407,14 @@ ChangeLog:
       };
       items.appendChild(ep);
     });
+    e.onclick = function(evt) {
+      evt.preventDefault();
+      document.body.removeChild(menu);
+      document.body.removeChild(e);
+      uart.log(1,"User clicked outside modal - cancelling connect");
+      connection.isOpening = false;
+      connection.emit('error', "Model closed.");
+    };
     document.body.appendChild(e);
     document.body.appendChild(menu);
     return connection;
@@ -454,7 +485,7 @@ ChangeLog:
       }, 100);
     }
 
-    if (connection && (connection.isOpen || connection.isOpening)) {
+    if (connection && connection.isOpen) {
       if (!connection.txInProgress) connection.received = "";
       isBusy = true;
       return connection.write(data, onWritten);
@@ -501,10 +532,13 @@ ChangeLog:
   // ----------------------------------------------------------
 
   var uart = {
+    version : "1.01",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
     flowControl : true,
+    /// Which ports should be offer to the user? If only one is specified no modal menu is created
+    ports : ["Web Bluetooth","Web Serial"],
     /// Used internally to write log information - you can replace this with your own function
     log : function(level, s) { if (level <= this.debug) console.log("<UART> "+s)},
     /// Called with the current send progress or undefined when done - you can replace this with your own function
