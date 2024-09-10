@@ -52,9 +52,15 @@ ChangeLog:
 ...
 1.01: Add UART.ports to allow available to user to be restricted
       Add configurable baud rate
+      Updated modal dialog look (with common fn for selector and modal)
 1.00: Auto-adjust BLE chunk size up if we receive >20 bytes in a packet
       Drop UART.debug to 1 (less info printed)
       Fixed flow control on BLE
+
+To do:
+
+* write/eval/etc should return promises
+
 */
 (function (root, factory) {
     if (typeof define === 'function' && define.amd) {
@@ -351,6 +357,59 @@ ChangeLog:
     }
   });
   // ======================================================================
+  /* Create a modal window.
+    options = {
+          title : string
+          contents = DomElement | string
+          onClickBackground : function
+          onClickMenu : function
+    }
+    returns {
+      remove : function(); // remove menu
+    }
+  */
+  function createModal(options) {
+    // modal
+    var e = document.createElement('div');
+    e.style = 'position:absolute;top:0px;left:0px;right:0px;bottom:0px;opacity:0.5;z-index:100;background:black;';
+    // menu
+    var menu = document.createElement('div');
+    menu.style = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family: Sans-Serif;z-index:101;min-width:30%';
+    var menutitle = document.createElement('div');
+    menutitle.innerText = options.title;
+    menutitle.style = 'color:#fff;background:#000;padding:8px 8px 4px 8px;font-weight:bold;';
+    menu.appendChild(menutitle);
+
+    var items = document.createElement('div');
+    items.style = 'color:#000;background:#fff;padding:4px 8px 4px 8px;min-height:4em';
+    if ("string" == typeof options.contents)
+      items.innerHTML = options.contents;
+    else
+      items.appendChild(options.contents);
+    menu.appendChild(items);
+    document.body.appendChild(e);
+    document.body.appendChild(menu);
+    e.onclick = function(evt) { // clicked modal -> remove
+      evt.preventDefault();
+      result.remove();
+      if (options.onClickBackground)
+        options.onClickBackground();
+    };
+    menu.onclick = function(evt) { // clicked menu
+      evt.preventDefault();
+      if (options.onClickMenu)
+        options.onClickMenu();
+    };
+
+    var result = {
+      remove : function() {
+        document.body.removeChild(menu);
+        document.body.removeChild(e);
+      }
+    };
+    return result;
+  }
+  // ======================================================================
   var connection;
   function connect(callback) {
     var connection = {
@@ -373,19 +432,8 @@ ChangeLog:
       }
       return endpoint.connect(connection, callback);
     }
-    // modal
-    var e = document.createElement('div');
-    e.style = 'position:absolute;top:0px;left:0px;right:0px;bottom:0px;opacity:0.5;z-index:100;background:black;';
-    // menu
-    var menu = document.createElement('div');
-    menu.style = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family: Sans-Serif;z-index:101;';
-    var menutitle = document.createElement('div');
-    menutitle.innerText = "SELECT A PORT...";
-    menutitle.style = 'color:#fff;background:#000;padding:8px 8px 4px 8px;font-weight:bold;';
-    menu.appendChild(menutitle);
+
     var items = document.createElement('div');
-    items.style = 'color:#000;background:#fff;padding:4px 8px 4px 8px;';
-    menu.appendChild(items);
     uart.ports.forEach(function(portName) {
       var endpoint = endpoints.find(ep => ep.name == portName);
       if (endpoint===undefined) {
@@ -403,21 +451,19 @@ ChangeLog:
       ep.onclick = function(evt) {
         connection = endpoint.connect(connection, callback);
         evt.preventDefault();
-        document.body.removeChild(menu);
-        document.body.removeChild(e);
+        menu.remove();
       };
       items.appendChild(ep);
     });
-    e.onclick = function(evt) {
-      evt.preventDefault();
-      document.body.removeChild(menu);
-      document.body.removeChild(e);
-      uart.log(1,"User clicked outside modal - cancelling connect");
-      connection.isOpening = false;
-      connection.emit('error', "Model closed.");
-    };
-    document.body.appendChild(e);
-    document.body.appendChild(menu);
+    var menu = createModal({
+      title:"SELECT A PORT...",
+      contents:items,
+      onClickBackground:function() {
+        uart.log(1,"User clicked outside modal - cancelling connect");
+        connection.isOpening = false;
+        connection.emit('error', "Model closed.");
+      }
+    });
     return connection;
   }
   function checkIfSupported() {
@@ -581,15 +627,15 @@ ChangeLog:
     'callback' will be called. This is useful because you can't initialise
     Web Bluetooth unless you're doing so in response to a user input.*/
     modal : function(callback) {
-      var e = document.createElement('div');
-      e.style = 'position:absolute;top:0px;left:0px;right:0px;bottom:0px;opacity:0.5;z-index:100;background:black;';
-      e.innerHTML = '<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family: Sans-Serif;font-size:400%;color:white;">Click to Continue...</div>';
-      e.onclick = function(evt) {
-        callback();
-        evt.preventDefault();
-        document.body.removeChild(e);
-      };
-      document.body.appendChild(e);
+      var menu = createModal({
+        title : "Connection",
+        contents : '<br/><center>Please click to connect</center>',
+        onClickBackground : callback,
+        onClickMenu : function() {
+          menu.remove();
+          callback();
+        }
+      });
     }
   };
   return uart;
