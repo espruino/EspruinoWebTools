@@ -51,6 +51,7 @@ ChangeLog:
 
 ...
 1.01: Add UART.ports to allow available to user to be restricted
+      Add configurable baud rate
 1.00: Auto-adjust BLE chunk size up if we receive >20 bytes in a packet
       Drop UART.debug to 1 (less info printed)
       Fixed flow control on BLE
@@ -299,7 +300,7 @@ ChangeLog:
       navigator.serial.requestPort({}).then(function(port) {
         log(1, "Connecting to serial port");
         serialPort = port;
-        return port.open({ baudRate: 115200 });
+        return port.open({ baudRate: baud });
       }).then(function () {
         function readLoop() {
           var reader = serialPort.readable.getReader();
@@ -539,6 +540,8 @@ ChangeLog:
     flowControl : true,
     /// Which ports should be offer to the user? If only one is specified no modal menu is created
     ports : ["Web Bluetooth","Web Serial"],
+    /// Baud rate for Web Serial connections (Official Espruino devices use 9600, Espruino-on-ESP32/etc use 115200)
+    baud : 115200,
     /// Used internally to write log information - you can replace this with your own function
     log : function(level, s) { if (level <= this.debug) console.log("<UART> "+s)},
     /// Called with the current send progress or undefined when done - you can replace this with your own function
