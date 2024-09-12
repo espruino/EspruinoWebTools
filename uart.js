@@ -47,9 +47,15 @@ UART.ports = ["Web Serial"]; // force only Web Serial to be used
 UART.debug = 3; // show all debug messages
 etc...
 
+As of Espruino 2v25 you can also send data packets:
+
+UART.getConnection().espruinoSendFile("test.txt","This is a test of sending data to Espruino").then(_=>console.log("Done"))
+
 ChangeLog:
 
 ...
+1.02: Added better on/emit/removeListener handling
+      Add .espruinoSendPacket
 1.01: Add UART.ports to allow available to user to be restricted
       Add configurable baud rate
       Updated modal dialog look (with common fn for selector and modal)
@@ -60,6 +66,9 @@ ChangeLog:
 To do:
 
 * write/eval/etc should return promises
+* move 'connection.received' handling into removeListener and add an upper limit (100k?)
+* add a 'line' event for each line of data that's received
+* add espruinoEval method using the new packet system
 
 */
 (function (root, factory) {
@@ -105,6 +114,94 @@ To do:
     if (uart.log) uart.log(level, s);
   }
 
+  /// Base connection class - BLE/Serial add their write/etc on top of this
+  class Connection {
+    // on/emit work for close/data/open/error/ack/nak events
+    on(evt,cb) { let e = "on"+evt; if (!this[e]) this[e]=[]; this[e].push(cb); }; // on only works with a single handler
+    emit(evt,data) { let e = "on"+evt;  if (this[e]) this[e].forEach(fn=>fn(data)); };
+    removeListener(evt,callback) { let e = "on"+evt;  if (this[e]) this[e]=this[e].filter(fn=>fn!=callback); };
+    isOpen = false;       // is the connection actually open?
+    isOpening = true;     // in the process of opening a connection?
+    txInProgress = false; // is transmission in progress?
+    parsePackets = false; // If set we parse the input stream for Espruino packet data transfers
+    rxDataHandler(data) { // Called when data is received, and passed it on to event listeners
+      log(3, "Received "+JSON.stringify(data));
+      // TODO: handle XON/XOFF centrally here?
+      if (this.parsePackets) {
+        for (var i=0;i<data.length;i++) {
+          let ch = data[i];
+          if (ch=="\x06") {
+            log(3, "Got ACK");
+            this.emit("ack");
+            ch = undefined;
+          } else if (ch=="\x15") {
+            log(3, "Got NAK");
+            this.emit("nak");
+            ch = undefined;
+          }
+          if (ch===undefined) { // if we're supposed to remove the char, do it
+            console.log("before",data);
+            data = data.substring(0,i-1)+data.substring(i+1);
+            console.log("after",data);
+            i--;
+          }
+        }
+      }
+      connection.emit('data', data);
+    }
+
+    /* Send a packet of type "RESPONSE/EVAL/EVENT/FILE_SEND/DATA" to Espruino */
+    espruinoSendPacket(pkType, data) {
+      if ("string"!=typeof data) throw new Error("'data' must be a String");
+      if (data.length>0x1FFF) throw new Error("'data' too long");
+      const PKTYPES = {
+        RESPONSE : 0, // Response to an EVAL packet
+        EVAL : 0x2000,  // execute and return the result as RESPONSE packet
+        EVENT : 0x4000, // parse as JSON and create `E.on('packet', ...)` event
+        FILE_SEND : 0x6000, // called before DATA, with {fn:"filename",s:123}
+        DATA : 0x8000, // Sent after FILE_SEND with blocks of data for the file
+      }
+      if (!pkType in PKTYPES) throw new Error("'pkType' not one of "+Object.keys(PKTYPES));
+      let connection = this;
+      return new Promise((resolve,reject) => {
+        function tidy() {
+          connection.removeListener("ack",onACK);
+          connection.removeListener("nak",onNAK);
+        }
+        function onACK(ok) {
+          tidy();
+          resolve();
+        }
+        function onNAK(ok) {
+          tidy();
+          reject();
+        }
+        connection.parsePackets = true;
+        connection.on("ack",onACK);
+        connection.on("nak",onNAK);
+        let flags = data.length | PKTYPES[pkType];
+        write(String.fromCharCode(/*DLE*/16,/*SOH*/1,(flags>>8)&0xFF,flags&0xFF)+data);
+      });
+    }
+    /* Send a file to Espruino using 2v25 packets */
+    espruinoSendFile(filename, data, options) {
+      if ("string"!=typeof data) throw new Error("'data' must be a String");
+      options = options||{};
+      options.fn = filename;
+      options.s = data.length;
+      let connection = this;
+      return connection.espruinoSendPacket("FILE_SEND",JSON.stringify(options)).then(sendData);
+      function sendData() {
+        if (data.length==0) return Promise.resolve();
+        const CHUNK = 512;
+        let packet = data.substring(0, CHUNK);
+        data = data.substring(CHUNK);
+        return connection.espruinoSendPacket("DATA", packet).then(sendData);
+      }
+    }
+  };
+
+  ///
   var endpoints = [];
   endpoints.push({
     name : "Web Bluetooth",
@@ -253,9 +350,7 @@ To do:
               }
             }
           }
-          var str = ab2str(dataview.buffer);
-          log(3, "Received "+JSON.stringify(str));
-          connection.emit('data', str);
+          connection.rxDataHandler(ab2str(dataview.buffer));
         });
         return rxCharacteristic.startNotifications();
       }).then(function() {
@@ -306,16 +401,14 @@ To do:
       navigator.serial.requestPort({}).then(function(port) {
         log(1, "Connecting to serial port");
         serialPort = port;
-        return port.open({ baudRate: baud });
+        return port.open({ baudRate: uart.baud });
       }).then(function () {
         function readLoop() {
           var reader = serialPort.readable.getReader();
           reader.read().then(function ({ value, done }) {
             reader.releaseLock();
             if (value) {
-              var str = ab2str(value.buffer);
-              log(3, "Received "+JSON.stringify(str));
-              connection.emit('data', str);
+              connection.rxDataHandler(ab2str(value.buffer));
             }
             if (done) {
               disconnected();
@@ -344,7 +437,9 @@ To do:
       connection.write = function(data, callback) {
         var writer = serialPort.writable.getWriter();
         // TODO: progress?
+        log(2, "Sending "+ JSON.stringify(data));
         writer.write(str2ab(data)).then(function() {
+          log(3, "Sent");
           callback();
         }).catch(function(error) {
           log(0,'SEND ERROR: ' + error);
@@ -412,13 +507,7 @@ To do:
   // ======================================================================
   var connection;
   function connect(callback) {
-    var connection = {
-      on : function(evt,cb) { this["on"+evt]=cb; },
-      emit : function(evt,data) { if (this["on"+evt]) this["on"+evt](data); },
-      isOpen : false,
-      isOpening : true,
-      txInProgress : false
-    };
+    connection = new Connection();
 
     if (uart.ports.length==0) {
       console.error(`UART: No ports in uart.ports`);
@@ -579,7 +668,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.01",
+    version : "1.02",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
@@ -636,7 +725,10 @@ To do:
           callback();
         }
       });
-    }
+    },
+    /* This is the list of 'drivers' for Web Bluetooth/Web Serial. It's possible to add to these
+    and also change 'ports' in order to add your own custom endpoints (eg WebSockets) */
+    endpoints : endpoints
   };
   return uart;
 }));
