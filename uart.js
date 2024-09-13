@@ -54,6 +54,8 @@ UART.getConnection().espruinoSendFile("test.txt","This is a test of sending data
 ChangeLog:
 
 ...
+1.03: Added options for restricting what devices appear
+      Improve Web Serial Disconnection - didn't work before
 1.02: Added better on/emit/removeListener handling
       Add .espruinoSendPacket
 1.01: Add UART.ports to allow available to user to be restricted
@@ -86,8 +88,14 @@ To do:
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 
+  const NORDIC_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+  const NORDIC_TX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+  const NORDIC_RX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+
   if (typeof navigator == "undefined") return;
+  /// Are we busy, so new requests should be written to the queue (below)?
   var isBusy;
+  /// A queue of operations to perform if UART.write/etc is called while busy
   var queue = [];
 
   function ab2str(buf) {
@@ -201,7 +209,7 @@ To do:
     }
   };
 
-  ///
+  /// Endpoints for each connection method
   var endpoints = [];
   endpoints.push({
     name : "Web Bluetooth",
@@ -226,9 +234,6 @@ To do:
       }
     },
     connect : function(connection, callback) {
-      var NORDIC_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-      var NORDIC_TX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-      var NORDIC_RX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
       var DEFAULT_CHUNKSIZE = 20;
 
       var btServer = undefined;
@@ -298,19 +303,7 @@ To do:
         }
       };
 
-      navigator.bluetooth.requestDevice({
-          filters:[
-            { namePrefix: 'Puck.js' },
-            { namePrefix: 'Pixl.js' },
-            { namePrefix: 'Jolt.js' },
-            { namePrefix: 'MDBT42Q' },
-            { namePrefix: 'Bangle' },
-            { namePrefix: 'RuuviTag' },
-            { namePrefix: 'iTracker' },
-            { namePrefix: 'Thingy' },
-            { namePrefix: 'Espruino' },
-            { services: [ NORDIC_SERVICE ] }
-          ], optionalServices: [ NORDIC_SERVICE ]}).then(function(device) {
+      navigator.bluetooth.requestDevice(uart.optionsBluetooth).then(function(device) {
         log(1, 'Device Name:       ' + device.name);
         log(1, 'Device ID:         ' + device.id);
         // Was deprecated: Should use getPrimaryServices for this in future
@@ -388,7 +381,7 @@ To do:
       return true;
     },
     connect : function(connection, callback) {
-      var serialPort;
+      var serialPort, reader, writer;
       function disconnected() {
         connection.isOpening = false;
         if (connection.isOpen) {
@@ -397,22 +390,25 @@ To do:
           connection.emit('close');
         }
       }
-      // TODO: Pass USB vendor and product ID filter when supported by Chrome.
-      navigator.serial.requestPort({}).then(function(port) {
+      navigator.serial.requestPort(uart.optionsSerial).then(function(port) {
         log(1, "Connecting to serial port");
         serialPort = port;
         return port.open({ baudRate: uart.baud });
       }).then(function () {
         function readLoop() {
-          var reader = serialPort.readable.getReader();
+          reader = serialPort.readable.getReader();
           reader.read().then(function ({ value, done }) {
             reader.releaseLock();
-            if (value) {
+            reader = undefined;
+            if (value)
               connection.rxDataHandler(ab2str(value.buffer));
-            }
-            if (done) {
+            if (done) { // connection is closed
+              if (serialPort) {
+                serialPort.close();
+                serialPort = undefined;
+              }
               disconnected();
-            } else {
+            } else { // else continue reading
               readLoop();
             }
           });
@@ -428,24 +424,30 @@ To do:
         disconnected();
       });
       connection.close = function(callback) {
-        if (serialPort) {
-          serialPort.close();
-          serialPort = undefined;
+        if (writer) {
+          writer.close();
+          writer = undefined;
         }
-        disconnected();
+        if (reader) {
+          reader.cancel();
+        }
+        // readLoop will finish and *that* calls disconnect and cleans up
       };
       connection.write = function(data, callback) {
-        var writer = serialPort.writable.getWriter();
         // TODO: progress?
+        writer = serialPort.writable.getWriter();
         log(2, "Sending "+ JSON.stringify(data));
         writer.write(str2ab(data)).then(function() {
+          writer.releaseLock();
+          writer = undefined;
           log(3, "Sent");
           callback();
         }).catch(function(error) {
+          writer.releaseLock();
+          writer = undefined;
           log(0,'SEND ERROR: ' + error);
           closeSerial();
         });
-        writer.releaseLock();
       };
 
       return connection;
@@ -668,7 +670,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.02",
+    version : "1.03",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
@@ -728,7 +730,25 @@ To do:
     },
     /* This is the list of 'drivers' for Web Bluetooth/Web Serial. It's possible to add to these
     and also change 'ports' in order to add your own custom endpoints (eg WebSockets) */
-    endpoints : endpoints
+    endpoints : endpoints,
+    /* options passed to navigator.serial.requestPort. You can change this to:
+      {filters:[{ usbVendorId: 0x1234 }]} to restrict the serial ports that are shown */
+    optionsSerial : {},
+    /* options passed to navigator.bluetooth.requestDevice. You can change this to
+       allow more devices to connect (or restrict the ones that are shown) */
+    optionsBluetooth : {
+      filters:[
+        { namePrefix: 'Puck.js' },
+        { namePrefix: 'Pixl.js' },
+        { namePrefix: 'Jolt.js' },
+        { namePrefix: 'MDBT42Q' },
+        { namePrefix: 'Bangle' },
+        { namePrefix: 'RuuviTag' },
+        { namePrefix: 'iTracker' },
+        { namePrefix: 'Thingy' },
+        { namePrefix: 'Espruino' },
+        { services: [ NORDIC_SERVICE ] }
+      ], optionalServices: [ NORDIC_SERVICE ]}
   };
   return uart;
 }));
