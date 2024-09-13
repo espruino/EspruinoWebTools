@@ -50,6 +50,7 @@ etc...
 As of Espruino 2v25 you can also send data packets:
 
 UART.getConnection().espruinoSendFile("test.txt","This is a test of sending data to Espruino").then(_=>console.log("Done"))
+UART.getConnection().espruinoSendFile("test.txt","This is a test of sending data to Espruino's SD card",{fs:true}).then(_=>console.log("Done"))
 
 ChangeLog:
 
@@ -148,9 +149,7 @@ To do:
             ch = undefined;
           }
           if (ch===undefined) { // if we're supposed to remove the char, do it
-            console.log("before",data);
             data = data.substring(0,i-1)+data.substring(i+1);
-            console.log("after",data);
             i--;
           }
         }
