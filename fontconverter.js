@@ -866,7 +866,7 @@ function getRanges() {
     "ASCII Capitals" : {range : [{ min : 32, max : 93 }], text: "THIS IS A TEST" },
     "Numeric" : {range : [{ min : 46, max : 58 }], text:"0.123456789:/" },
     "ISO8859-1":  {range : [{ min : 32, max : 255 }], text: "Thís îs ã tést" },
-    "Extended":  {range : [{ min : 32, max : 1103 }], text: "Thís îs ã tést" }, // 150 languages + Cyrillic
+    "Extended":  {range : [{ min : 32, max : 1111 }], text: "Thís îs ã tést" }, // 150 languages + Cyrillic
     "All":  {range : [{ min : 32, max : 0xFFFF }], text: "이것 îs ã 测试" },
     "Chinese":  {range : [{ min : 32, max : 255 }, { min : 0x4E00, max : 0x9FAF }], text: "这是一个测试" },
     "Korean":  {range : [{ min : 32, max : 255 }, { min : 0x1100, max : 0x11FF }, { min : 0x3130, max : 0x318F }, { min : 0xA960, max : 0xA97F }, { min : 0xAC00, max : 0xD7FF }], text: "이것은 테스트입니다" },
