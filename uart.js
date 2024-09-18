@@ -524,7 +524,7 @@ To do:
     e.style = 'position:absolute;top:0px;left:0px;right:0px;bottom:0px;opacity:0.5;z-index:100;background:black;';
     // menu
     var menu = document.createElement('div');
-    menu.style = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family: Sans-Serif;z-index:101;min-width:30%';
+    menu.style = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family: Sans-Serif;z-index:101;min-width:300px';
     var menutitle = document.createElement('div');
     menutitle.innerText = options.title;
     menutitle.style = 'color:#fff;background:#000;padding:8px 8px 4px 8px;font-weight:bold;';
