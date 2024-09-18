@@ -44,7 +44,7 @@ function uploadZIP() {
         promise = promise
         .then(() => {
           setStatus("Decompressing"+path);
-          return file.async("string");
+          return file.async("binarystring");
         }).then(data => {
           if (data.length==0) {
             console.log("Can't restore files of length 0, ignoring "+path);
