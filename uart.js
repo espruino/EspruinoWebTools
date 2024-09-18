@@ -52,9 +52,25 @@ As of Espruino 2v25 you can also send data packets:
 UART.getConnection().espruinoSendFile("test.txt","This is a test of sending data to Espruino").then(_=>console.log("Done"))
 UART.getConnection().espruinoSendFile("test.txt","This is a test of sending data to Espruino's SD card",{fs:true}).then(_=>console.log("Done"))
 
+UART.debug=3;
+var s = ""; for (var i=0;i<256;i++) s+=String.fromCharCode(i);
+var ss = ""; for (var i=0;i<256;i++) ss+=s;
+UART.getConnection().espruinoSendFile("testbin",ss,{fs:true})
+
+
+UART.debug=3;
+var s = ""; for (var i=0;i<256;i++) s+=String.fromCharCode(i);
+UART.getConnection().espruinoSendFile("testbin",s,{fs:true})
+
+UART.debug=3;
+var s = ""; for (var i=0;i<256;i++) s+=String.fromCharCode(i)
+UART.getConnection().espruinoSendFile("testbin",s)
+
+
 ChangeLog:
 
 ...
+1.04: For packet uploads, add ability to ste chunk size, report progress or even skip searching for acks
 1.03: Added options for restricting what devices appear
       Improve Web Serial Disconnection - didn't work before
 1.02: Added better on/emit/removeListener handling
@@ -72,6 +88,7 @@ To do:
 * move 'connection.received' handling into removeListener and add an upper limit (100k?)
 * add a 'line' event for each line of data that's received
 * add espruinoEval method using the new packet system
+* move XON/XOFF handling into Connection.rxDataHandler
 
 */
 (function (root, factory) {
@@ -157,8 +174,13 @@ To do:
       connection.emit('data', data);
     }
 
-    /* Send a packet of type "RESPONSE/EVAL/EVENT/FILE_SEND/DATA" to Espruino */
-    espruinoSendPacket(pkType, data) {
+    /* Send a packet of type "RESPONSE/EVAL/EVENT/FILE_SEND/DATA" to Espruino
+       options = {
+         noACK : bool (don't wait to acknowledgement)
+       }
+    */
+    espruinoSendPacket(pkType, data, options) {
+      options = options || {};
       if ("string"!=typeof data) throw new Error("'data' must be a String");
       if (data.length>0x1FFF) throw new Error("'data' too long");
       const PKTYPES = {
@@ -183,27 +205,59 @@ To do:
           tidy();
           reject();
         }
-        connection.parsePackets = true;
-        connection.on("ack",onACK);
-        connection.on("nak",onNAK);
+        if (!options.noACK) {
+          connection.parsePackets = true;
+          connection.on("ack",onACK);
+          connection.on("nak",onNAK);
+        }
         let flags = data.length | PKTYPES[pkType];
-        write(String.fromCharCode(/*DLE*/16,/*SOH*/1,(flags>>8)&0xFF,flags&0xFF)+data);
+        connection.write(String.fromCharCode(/*DLE*/16,/*SOH*/1,(flags>>8)&0xFF,flags&0xFF)+data, function() {
+          // write complete
+          if (options.noACK) {
+            resolve(); // if not listening for acks, just resolve immediately
+          }
+        });
       });
     }
-    /* Send a file to Espruino using 2v25 packets */
+    /* Send a file to Espruino using 2v25 packets.
+       options = { // mainly passed to Espruino
+         fs : true // optional -> write using require("fs") (to SD card)
+         noACK : bool // (don't wait to acknowledgements)
+         chunkSize : int // size of chunks to send (default 1024) for safety this depends on how big your device's input buffer is if there isn't flow control
+         progress : (chunkNo,chunkCount)=>{} // callback to report upload progress
+   } */
     espruinoSendFile(filename, data, options) {
       if ("string"!=typeof data) throw new Error("'data' must be a String");
+      let CHUNK = 1024;
       options = options||{};
       options.fn = filename;
       options.s = data.length;
+      let packetOptions = {};
+      let progressHandler =  (chunkNo,chunkCount)=>{};
+      if (options.noACK) {
+        delete options.noACK;
+        packetOptions.noACK = true;
+      }
+      if (options.chunkSize) {
+        CHUNK = options.chunkSize;
+        delete options.chunkSize;
+      }
+      if (options.progress) {
+        progressHandler = options.progress;
+        delete options.progress;
+      }
       let connection = this;
+      let packetCount = 0, packetTotal = Math.ceil(data.length/CHUNK)+1;
+      // always ack the FILE_SEND
+      progressHandler(0, packetTotal);
       return connection.espruinoSendPacket("FILE_SEND",JSON.stringify(options)).then(sendData);
+      // but if noACK don't ack for data
       function sendData() {
+        progressHandler(++packetCount, packetTotal);
         if (data.length==0) return Promise.resolve();
-        const CHUNK = 512;
         let packet = data.substring(0, CHUNK);
         data = data.substring(CHUNK);
-        return connection.espruinoSendPacket("DATA", packet).then(sendData);
+        return connection.espruinoSendPacket("DATA", packet, packetOptions).then(sendData);
       }
     }
   };
@@ -669,7 +723,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.03",
+    version : "1.04",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true

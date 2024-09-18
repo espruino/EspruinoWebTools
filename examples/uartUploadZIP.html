@@ -1,0 +1,145 @@
+<html>
+ <!-- This example uploads the entire contents of a zip file to Espruino using 2v25's packet
+  upload system. It uses `fs:true` which causes Espruino to upload to the attached SD card.
+  You can omit this to upload to internal storage instead. -->
+ <head>
+ </head>
+ <body>
+  <script src="../uart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+
+  <button onclick="connectAndUploadZIP()">Upload a ZIP file</button>
+  <button onclick="UART.close();">Disconnect</button>
+
+  <div>
+    <span id="status"></span>
+    <div id="progress" style="width:100px;border:1px solid black;padding:2px;display:none;"><div id="progressInner" style="background-color:red;width:25%">&nbsp;</div></div>
+  </div>
+  <script>
+  console.log("Use UART.debug=3 for full debug info");
+
+function setStatus(txt, progress) {
+  document.getElementById("status").innerText = txt;
+  if (progress===undefined)
+    document.getElementById("progress").style.display="none";
+  else {
+    document.getElementById("progress").style.display="inline-block";
+    document.getElementById("progressInner").style.width=Math.round(progress*100)+"%";
+  }
+}
+
+
+function uploadZIP() {
+  fileOpenDialog({
+      id:"backup",
+      type:"arraybuffer",
+      mimeType:".zip,application/zip"}, function(data) {
+    if (data===undefined) return;
+    var promise = Promise.resolve();
+    var zip = new JSZip();
+    var cmds = "";
+    zip.loadAsync(data).then(function(zip) {
+      console.log(`Reading ZIP`);
+      zip.forEach(function (path, file){
+        promise = promise
+        .then(() => {
+          setStatus("Decompressing"+path);
+          return file.async("string");
+        }).then(data => {
+          if (data.length==0) {
+            console.log("Can't restore files of length 0, ignoring "+path);
+          } else {
+            console.log("Uploading", path);
+            setStatus("Uploading "+path, 0);
+            return UART.getConnection().espruinoSendFile(path,data,{
+              fs:true,
+              noACK:true,
+              chunkSize:1024*7, // 8k packet size limit in protocol
+              progress: (n,chunks) => setStatus("Uploading "+path, n/chunks)
+            }).then(() => {
+              console.log("Uploaded.");
+              setStatus("");
+            });
+          }
+        });
+      });
+      return promise;
+    })
+  });
+}
+
+function connectAndUploadZIP() {
+  if (UART.getConnection()) {
+    uploadZIP();
+  } else {
+    UART.write("reset()\n", function() { // or connect
+      uploadZIP();
+    });
+  }
+}
+
+ // just copied from EspruinoTools to let us pop up a dialog
+ function fileOpenDialog(options, callback) {
+  function readerLoaded(e,files,i,options,fileLoader) {
+  /* Doing reader.readAsText(file) interprets the file as UTF8
+    which we don't want. */
+    var result;
+    if (options.type=="text") {
+      var a = new Uint8Array(e.target.result);
+      result = "";
+      for (var j=0;j<a.length;j++)
+        result += String.fromCharCode(a[j]);
+    } else
+      result = e.target.result;
+    fileLoader.callback(result, files[i].type, files[i].name);
+
+
+    // If there's a file left to load
+    if (i < files.length - 1 && options.multi) {
+      // Load the next file
+      setupReader(files, i+1,options,fileLoader);
+    } else {
+      fileLoader.callback = undefined;
+    }
+}
+function setupReader(files,i,options,fileLoader) {
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    readerLoaded(e,files,i,options,fileLoader)
+  };
+  if (options.type=="text" || options.type=="arraybuffer") reader.readAsArrayBuffer(files[i]);
+  else throw new Error("fileOpenDialog: unknown type "+options.type);
+}
+  options = options||{};
+  options.type = options.type||"text";
+  options.id = options.id||"default";
+  var loaderId = options.id+"FileLoader";
+  var fileLoader = document.getElementById(loaderId);
+  if (!fileLoader) {
+    fileLoader = document.createElement("input");
+    fileLoader.setAttribute("id", loaderId);
+    fileLoader.setAttribute("type", "file");
+    fileLoader.setAttribute("style", "z-index:-2000;position:absolute;top:0px;left:0px;display:none;");
+    if (options.multi)
+      fileLoader.setAttribute("multiple","multiple");
+    if (options.mimeType)
+      fileLoader.setAttribute("accept",options.mimeType);
+    fileLoader.addEventListener('click', function(e) {
+      e.target.value = ''; // handle repeated upload of the same file
+    });
+    fileLoader.addEventListener('change', function(e) {
+      if (!fileLoader.callback) return;
+
+      var files = e.target.files;
+      setupReader(files,0,options,fileLoader);
+
+    }, false);
+    document.body.appendChild(fileLoader);
+  }
+  fileLoader.callback = callback;
+  fileLoader.click();
+}
+
+  </script>
+ </body>
+</html>
