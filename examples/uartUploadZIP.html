@@ -28,43 +28,102 @@ function setStatus(txt, progress) {
   }
 }
 
+function CRC32(str) {
+  let crc = 0xFFFFFFFF;
+  for (let i=0;i<str.length;i++) {
+    crc ^= str.charCodeAt(i)&255;
+    for (let t=0;t<8;t++)
+      crc = (crc>>>1) ^ (0xEDB88320 & -(crc & 1));
+  }
+  return new Uint32Array([~crc])[0]; // is there a better way to force this to unsigned 32 bit?
+}
+
+// Get existing files on SD card along with their size and CRCs of first 1k
+function getExistingFiles() {
+  setStatus("Reading existing files...");
+  return new Promise(resolve => {
+UART.eval(`(() => {
+let info=[];
+function recurse(dir,fn) {
+  var s = require("fs").statSync(dir+fn);
+  if (s.dir) require("fs").readdir(dir+fn).forEach(recurse.bind(null,dir+fn+"/"));
+  else {
+    let f = E.openFile(dir+fn,"r");
+    let crc = E.CRC32(f.read(1024));
+    f.close();
+    info.push({fn:dir+fn,l:s.size,crc:crc});
+  }
+}
+require("fs").readdir().forEach(recurse.bind(null,""));
+return info;
+})()`, resolve);
+  });
+}
 
 function uploadZIP() {
-  fileOpenDialog({
-      id:"backup",
-      type:"arraybuffer",
-      mimeType:".zip,application/zip"}, function(data) {
-    if (data===undefined) return;
-    var promise = Promise.resolve();
-    var zip = new JSZip();
-    var cmds = "";
-    zip.loadAsync(data).then(function(zip) {
-      console.log(`Reading ZIP`);
-      zip.forEach(function (path, file){
-        promise = promise
-        .then(() => {
-          setStatus("Decompressing"+path);
-          return file.async("binarystring");
-        }).then(data => {
-          if (data.length==0) {
-            console.log("Can't restore files of length 0, ignoring "+path);
-          } else {
-            console.log("Uploading", path);
-            setStatus("Uploading "+path, 0);
-            return UART.getConnection().espruinoSendFile(path,data,{
-              fs:true,
-              noACK:true,
-              chunkSize:1024*7, // 8k packet size limit in protocol
-              progress: (n,chunks) => setStatus("Uploading "+path, n/chunks)
-            }).then(() => {
-              console.log("Uploaded.");
-              setStatus("");
-            });
-          }
+  getExistingFiles().then(files => {
+    setStatus("Loading zip...");
+    fileOpenDialog({
+        id:"backup",
+        type:"arraybuffer",
+        mimeType:".zip,application/zip"}, function(data) {
+      if (data===undefined) return;
+      var promise = Promise.resolve();
+      var zip = new JSZip();
+      var cmds = "";
+      zip.loadAsync(data).then(function(zip) {
+        console.log(`Reading ZIP`);
+        zip.forEach(function (path, file){
+          promise = promise
+          .then(() => {
+            setStatus("Decompressing "+path);
+            return file.async("binarystring");
+          }).then(data => {
+            if (data.length==0) {
+              console.log("Can't restore files of length 0, ignoring "+path);
+            } else {
+              var crc = CRC32(data.substring(0,1024)); // CRC first kb
+              var existing = files.find(f => f.fn.toUpperCase()==path.toUpperCase());
+              if (existing) existing.found = true;
+              if (existing && existing.l==data.length && existing.crc==crc) {
+                console.log("Size and CRC match, skipping "+path);
+              } else {
+                console.log("Uploading", path);
+                setStatus("Uploading "+path, 0);
+                return UART.getConnection().espruinoSendFile(path,data,{
+                  fs:true,
+                  noACK:true,
+                  chunkSize:1024*7, // 8k packet size limit in protocol
+                  progress: (n,chunks) => setStatus("Uploading "+path, n/chunks)
+                }).then(() => {
+                  console.log("Uploaded.");
+                  setStatus("");
+                });
+              }
+            }
+          });
         });
-      });
-      return promise;
-    })
+        promise = promise.then(() => {
+          setStatus("Complete.");
+          var cmds = "";
+          files.forEach(f=>{
+            if (f.found) return;
+            if (f.fn=="settings.json") return; // skip this
+            console.log(`${f.fn} found on card but not in ZIP, deleting.`);
+            cmds += `require("fs").unlink(${JSON.stringify(f.fn)});\n`
+          });
+          if (cmds=="") return Promise.resolve();
+          setStatus("Deleting leftover files");
+          return new Promise(resolve => {
+            UART.getConnection().write(cmds,function() {
+              setStatus("Complete.");
+              resolve();
+            });
+          });
+        })
+        return promise;
+      })
+    });
   });
 }
 
