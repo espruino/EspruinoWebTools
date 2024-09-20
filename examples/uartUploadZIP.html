@@ -141,7 +141,7 @@ function connectAndUploadZIP() {
   if (UART.getConnection()) {
     uploadZIP();
   } else {
-    UART.write("reset()\n", function() { // or connect
+    UART.write("\x03\x03reset()\n", function() { // or connect
       uploadZIP();
     });
   }
