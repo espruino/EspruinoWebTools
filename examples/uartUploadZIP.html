@@ -83,7 +83,13 @@ function uploadZIP() {
             return file.async("binarystring");
           }).then(data => {
             if (data.length==0) {
-              console.log("Can't restore files of length 0, ignoring "+path);
+              // If the path ends with a slash, it's a directory, which we should create if it doesn't exist
+              if (path[path.length-1]=="/") {
+                console.log("Creating directory "+path);
+                UART.getConnection().write(`\x10if (!require("fs").statSync(${JSON.stringify(path)})) require("fs").mkdir(${JSON.stringify(path)});\n`);
+              } else {
+                console.log("Can't restore files of length 0, ignoring "+path);
+              }
             } else {
               var crc = CRC32(data.substring(0,1024)); // CRC first kb
               var existing = files.find(f => f.fn.toUpperCase()==path.toUpperCase());
