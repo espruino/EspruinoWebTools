@@ -45,13 +45,16 @@ function getExistingFiles() {
 UART.eval(`(() => {
 let info=[];
 function recurse(dir,fn) {
+  if (dir[0]=="." || fn[0]==".") return;
   var s = require("fs").statSync(dir+fn);
   if (s.dir) require("fs").readdir(dir+fn).forEach(recurse.bind(null,dir+fn+"/"));
   else {
     let f = E.openFile(dir+fn,"r");
-    let crc = E.CRC32(f.read(1024));
-    f.close();
-    info.push({fn:dir+fn,l:s.size,crc:crc});
+    if (f) {
+      let crc = E.CRC32(f.read(1024));
+      f.close();
+      info.push({fn:dir+fn,l:s.size,crc:crc});
+    }
   }
 }
 require("fs").readdir().forEach(recurse.bind(null,""));
