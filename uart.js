@@ -70,6 +70,10 @@ UART.getConnection().espruinoSendFile("testbin",s)
 ChangeLog:
 
 ...
+1.05: Better handling of Web Serial disconnects
+      UART.connect without arguments now works
+      Fix issue using UART.write/eval if UART was opened with UART.connect()
+      UART.getConnection() now returns undefined/isConnected()=false if UART has disconnected
 1.04: For packet uploads, add ability to ste chunk size, report progress or even skip searching for acks
 1.03: Added options for restricting what devices appear
       Improve Web Serial Disconnection - didn't work before
@@ -150,6 +154,8 @@ To do:
     isOpening = true;     // in the process of opening a connection?
     txInProgress = false; // is transmission in progress?
     parsePackets = false; // If set we parse the input stream for Espruino packet data transfers
+    received = "";        // The data we've received so far - this gets reset by .write/eval/etc
+    hadData = false;      // used when waiting for a block of data to finish being receivd
     rxDataHandler(data) { // Called when data is received, and passed it on to event listeners
       log(3, "Received "+JSON.stringify(data));
       // TODO: handle XON/XOFF centrally here?
@@ -171,7 +177,13 @@ To do:
           }
         }
       }
-      connection.emit('data', data);
+      // keep track of received data
+      if (this.received.length < 100000) // ensure we're not creating a memory leak
+        this.received += data;
+      this.hadData = true;
+      // forward any data
+      if (this.cb) this.cb(data);
+      this.emit('data', data);
     }
 
     /* Send a packet of type "RESPONSE/EVAL/EVENT/FILE_SEND/DATA" to Espruino
@@ -464,7 +476,15 @@ To do:
             } else { // else continue reading
               readLoop();
             }
-          });
+          }, function(error) { // read() rejected...
+            reader.releaseLock();
+            log(0, 'ERROR: ' + error);
+            if (serialPort) {
+              serialPort.close();
+              serialPort = undefined;
+            }
+            disconnected();
+        });
         }
         readLoop();
         log(1,"Serial connected. Receiving data...");
@@ -563,7 +583,8 @@ To do:
   var connection;
   function connect(callback) {
     connection = new Connection();
-
+    if (!callback)
+      callback = function(){};
     if (uart.ports.length==0) {
       console.error(`UART: No ports in uart.ports`);
       return;
@@ -683,20 +704,6 @@ To do:
     }
 
     connection = connect(function(uart) {
-      if (!uart) {
-        connection = undefined;
-        if (callback) callback(null);
-        return;
-      }
-      connection.received = "";
-      connection.on('data', function(d) {
-        connection.received += d;
-        connection.hadData = true;
-        if (connection.cb)  connection.cb(d);
-      });
-      connection.on('close', function(d) {
-        connection = undefined;
-      });
       isBusy = true;
       connection.write(data, onWritten);
     });
@@ -723,7 +730,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.04",
+    version : "1.05",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
