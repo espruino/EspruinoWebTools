@@ -16,6 +16,10 @@ Simple usage:
 
 Execute expression and return the result:
 
+  UART.eval("BTN.read()").then(function(d) {
+    alert(d);
+  });
+  // or old way:
   UART.eval("BTN.read()", function(d) {
     alert(d);
   });
@@ -24,6 +28,10 @@ Or write and wait for a result - this will return all characters,
 including echo and linefeed from the REPL so you may want to send
 `echo(0)` and use `console.log` when doing this.
 
+  UART.write("1+2\n").then(function(d) {
+    alert(d);
+  });
+  // or old way
   UART.write("1+2\n", function(d) {
     alert(d);
   });
@@ -31,7 +39,7 @@ including echo and linefeed from the REPL so you may want to send
 Or more advanced usage with control of the connection
 - allows multiple connections
 
-  UART.connect(function(connection) {
+  UART.connectAsync().then(function(connection) {
     if (!connection) throw "Error!";
     connection.on('data', function(d) { ... });
     connection.on('close', function() { ... });
@@ -39,6 +47,25 @@ Or more advanced usage with control of the connection
     connection.write("1+2\n", function() {
       connection.close();
     });
+  });
+
+Auto-connect to previously-used Web Serial devices when they're connected to USB:
+
+  navigator.serial.addEventListener("connect", (event) => {
+    const port = event.target;
+    UART.connectAsync({serialPort:port}).then(connection=>console.log(connection));
+  });
+
+...or to a specific VID and PID when it is connected:
+
+  navigator.serial.addEventListener("connect", async (event) => {
+    const port = event.target;
+    const portInfo = await port.getInfo();
+    if (portInfo.usbVendorId==0x0483 && portInfo.usbProductId==0xA4F1) {
+      UART.connectAsync({serialPort:port}).then(connection=>console.log(connection));
+    } else {
+      console.log("Unknown device connected");
+    }
   });
 
 You can also configure before opening a connection (see the bottom of this file for more info):
@@ -70,6 +97,8 @@ UART.getConnection().espruinoSendFile("testbin",s)
 ChangeLog:
 
 ...
+1.06: Added optional serialPort parameter to UART.connect(), allowing a known Web Serial port to be used
+      Added connectAsync, and write/eval now return promises
 1.05: Better handling of Web Serial disconnects
       UART.connect without arguments now works
       Fix issue using UART.write/eval if UART was opened with UART.connect()
@@ -88,7 +117,6 @@ ChangeLog:
 
 To do:
 
-* write/eval/etc should return promises
 * move 'connection.received' handling into removeListener and add an upper limit (100k?)
 * add a 'line' event for each line of data that's received
 * add espruinoEval method using the new packet system
@@ -135,8 +163,8 @@ To do:
     if (!queue.length) return;
     var q = queue.shift();
     log(3,"Executing "+JSON.stringify(q)+" from queue");
-    if (q.type=="eval") uart.eval(q.expr, q.cb);
-    else if (q.type=="write") uart.write(q.data, q.callback, q.callbackNewline);
+    if (q.type=="eval") uart.eval(q.expr, q.cb).then(q.resolve, q.reject);
+    else if (q.type=="write") uart.write(q.data, q.callback, q.callbackNewline).then(q.resolve, q.reject);
     else log(1,"Unknown queue item "+JSON.stringify(q));
   }
 
@@ -298,7 +326,12 @@ To do:
         return "This Web Browser doesn't support Web Bluetooth.\nPlease see https://www.espruino.com/Puck.js+Quick+Start";
       }
     },
-    connect : function(connection, callback) {
+    connect : function(connection, options) {
+      options = options || {};
+      /* options = {
+         // nothing yet...
+       }
+       */
       var DEFAULT_CHUNKSIZE = 20;
 
       var btServer = undefined;
@@ -361,14 +394,14 @@ To do:
             connection.txInProgress = false;
             writeChunk();
           }).catch(function(error) {
-           log(1, 'SEND ERROR: ' + error);
-           txDataQueue = [];
-           connection.close();
+            log(1, 'SEND ERROR: ' + error);
+            txDataQueue = [];
+            connection.close();
           });
         }
       };
 
-      navigator.bluetooth.requestDevice(uart.optionsBluetooth).then(function(device) {
+      return navigator.bluetooth.requestDevice(uart.optionsBluetooth).then(function(device) {
         log(1, 'Device Name:       ' + device.name);
         log(1, 'Device ID:         ' + device.id);
         // Was deprecated: Should use getPrimaryServices for this in future
@@ -422,15 +455,15 @@ To do:
         connection.isOpening = false;
         isBusy = false;
         queue = [];
-        callback(connection);
         connection.emit('open');
         // if we had any writes queued, do them now
         connection.write();
+        return connection;
       }).catch(function(error) {
         log(1, 'ERROR: ' + error);
         connection.close();
+        return Promise.reject(error);
       });
-      return connection;
     }
   });
   endpoints.push({
@@ -445,8 +478,13 @@ To do:
         return "Serving off HTTP (not HTTPS) - Web Serial not enabled";
       return true;
     },
-    connect : function(connection, callback) {
-      var serialPort, reader, writer;
+    connect : function(connection, options) {
+      options = options || {};
+      /* options = {
+         serialPort : force a serialport, otherwise pop up a menu
+       }
+       */
+      let serialPort, reader, writer;
       function disconnected() {
         connection.isOpening = false;
         if (connection.isOpen) {
@@ -455,7 +493,37 @@ To do:
           connection.emit('close');
         }
       }
-      navigator.serial.requestPort(uart.optionsSerial).then(function(port) {
+
+      connection.close = function(callback) {
+        if (writer) {
+          writer.close();
+          writer = undefined;
+        }
+        if (reader) {
+          reader.cancel();
+        }
+        // readLoop will finish and *that* calls disconnect and cleans up
+      };
+      connection.write = function(data, callback) {
+        // TODO: progress?
+        writer = serialPort.writable.getWriter();
+        log(2, "Sending "+ JSON.stringify(data));
+        writer.write(str2ab(data)).then(function() {
+          writer.releaseLock();
+          writer = undefined;
+          log(3, "Sent");
+          callback();
+        }).catch(function(error) {
+          writer.releaseLock();
+          writer = undefined;
+          log(0,'SEND ERROR: ' + error);
+          closeSerial();
+        });
+      };
+
+      return (options.serialPort ?
+        Promise.resolve(options.serialPort) :
+        navigator.serial.requestPort(uart.optionsSerial)).then(function(port) {
         log(1, "Connecting to serial port");
         serialPort = port;
         return port.open({ baudRate: uart.baud });
@@ -491,39 +559,12 @@ To do:
         connection.txInProgress = false;
         connection.isOpen = true;
         connection.isOpening = false;
-        callback(connection);
+        return connection;
       }).catch(function(error) {
         log(0, 'ERROR: ' + error);
         disconnected();
+        return Promise.reject(error);
       });
-      connection.close = function(callback) {
-        if (writer) {
-          writer.close();
-          writer = undefined;
-        }
-        if (reader) {
-          reader.cancel();
-        }
-        // readLoop will finish and *that* calls disconnect and cleans up
-      };
-      connection.write = function(data, callback) {
-        // TODO: progress?
-        writer = serialPort.writable.getWriter();
-        log(2, "Sending "+ JSON.stringify(data));
-        writer.write(str2ab(data)).then(function() {
-          writer.releaseLock();
-          writer = undefined;
-          log(3, "Sent");
-          callback();
-        }).catch(function(error) {
-          writer.releaseLock();
-          writer = undefined;
-          log(0,'SEND ERROR: ' + error);
-          closeSerial();
-        });
-      };
-
-      return connection;
     }
   });
   // ======================================================================
@@ -581,55 +622,53 @@ To do:
   }
   // ======================================================================
   var connection;
-  function connect(callback) {
+  function connect(options) {
     connection = new Connection();
-    if (!callback)
-      callback = function(){};
-    if (uart.ports.length==0) {
-      console.error(`UART: No ports in uart.ports`);
-      return;
-    }
-    if (uart.ports.length==1) {
-      var endpoint = endpoints.find(ep => ep.name == uart.ports[0]);
-      if (endpoint===undefined) {
-        console.error(`UART: Port Named "${uart.ports[0]}" not found`);
-        return;
+    return new Promise((resolve, reject) => {
+      if (uart.ports.length==0) {
+        console.error(`UART: No ports in uart.ports`);
+        return reject(`UART: No ports in uart.ports`);
       }
-      return endpoint.connect(connection, callback);
-    }
+      if (uart.ports.length==1) {
+        var endpoint = endpoints.find(ep => ep.name == uart.ports[0]);
+        if (endpoint===undefined) {
+          return reject(`UART: Port Named "${uart.ports[0]}" not found`);
+        }
+        return endpoint.connect(connection, options).then(resolve, reject);
+      }
 
-    var items = document.createElement('div');
-    uart.ports.forEach(function(portName) {
-      var endpoint = endpoints.find(ep => ep.name == portName);
-      if (endpoint===undefined) {
-        console.error(`UART: Port Named "${portName}" not found`);
-        return;
-      }
-      var supported = endpoint.isSupported();
-      if (supported!==true)
-        log(0, endpoint.name+" not supported, "+supported);
-      var ep = document.createElement('div');
-      ep.style = 'width:300px;height:60px;background:#ccc;margin:4px 0px 4px 0px;padding:0px 0px 0px 68px;cursor:pointer;';
-      ep.innerHTML = '<div style="position:absolute;left:8px;width:48px;height:48px;background:#999;padding:6px;cursor:pointer;">'+endpoint.svg+'</div>'+
-                     '<div style="font-size:150%;padding-top:8px;">'+endpoint.name+'</div>'+
-                     '<div style="font-size:80%;color:#666">'+endpoint.description+'</div>';
-      ep.onclick = function(evt) {
-        connection = endpoint.connect(connection, callback);
-        evt.preventDefault();
-        menu.remove();
-      };
-      items.appendChild(ep);
+      var items = document.createElement('div');
+      uart.ports.forEach(function(portName) {
+        var endpoint = endpoints.find(ep => ep.name == portName);
+        if (endpoint===undefined) {
+          console.error(`UART: Port Named "${portName}" not found`);
+          return;
+        }
+        var supported = endpoint.isSupported();
+        if (supported!==true)
+          log(0, endpoint.name+" not supported, "+supported);
+        var ep = document.createElement('div');
+        ep.style = 'width:300px;height:60px;background:#ccc;margin:4px 0px 4px 0px;padding:0px 0px 0px 68px;cursor:pointer;';
+        ep.innerHTML = '<div style="position:absolute;left:8px;width:48px;height:48px;background:#999;padding:6px;cursor:pointer;">'+endpoint.svg+'</div>'+
+                      '<div style="font-size:150%;padding-top:8px;">'+endpoint.name+'</div>'+
+                      '<div style="font-size:80%;color:#666">'+endpoint.description+'</div>';
+        ep.onclick = function(evt) {
+          endpoint.connect(connection, options).then(resolve, reject);
+          evt.preventDefault();
+          menu.remove();
+        };
+        items.appendChild(ep);
+      });
+      var menu = createModal({
+        title:"SELECT A PORT...",
+        contents:items,
+        onClickBackground:function() {
+          uart.log(1,"User clicked outside modal - cancelling connect");
+          connection.isOpening = false;
+          connection.emit('error', "Model closed.");
+        }
+      });
     });
-    var menu = createModal({
-      title:"SELECT A PORT...",
-      contents:items,
-      onClickBackground:function() {
-        uart.log(1,"User clicked outside modal - cancelling connect");
-        connection.isOpening = false;
-        connection.emit('error', "Model closed.");
-      }
-    });
-    return connection;
   }
   function checkIfSupported() {
     var anySupported = false;
@@ -642,87 +681,97 @@ To do:
     });
     return anySupported;
   }
+  // Push the given operation to the queue, return a promise
+  function pushToQueue(operation) {
+    log(3, `Busy - adding ${operation.type} to queue`);
+    return new Promise((resolve,reject) => {
+      operation.resolve = resolve;
+      operation.reject = reject;
+      queue.push(operation);
+    });
+  }
   // ======================================================================
   /* convenience function... Write data, call the callback with data:
        callbackNewline = false => if no new data received for ~0.2 sec
        callbackNewline = true => after a newline */
   function write(data, callback, callbackNewline) {
     if (!checkIfSupported()) return;
-    if (isBusy) {
-      log(3, "Busy - adding write to queue");
-      queue.push({type:"write", data:data, callback:callback, callbackNewline:callbackNewline});
-      return;
-    }
+    if (isBusy)
+      return pushToQueue({type:"write", data:data, callback:callback, callbackNewline:callbackNewline});
 
-    var cbTimeout;
-    function onWritten() {
-      if (callbackNewline) {
-        connection.cb = function(d) {
-          var newLineIdx = connection.received.indexOf("\n");
-          if (newLineIdx>=0) {
-            var l = connection.received.substr(0,newLineIdx);
-            connection.received = connection.received.substr(newLineIdx+1);
+    return new Promise((resolve,reject) => {
+      var cbTimeout;
+      function onWritten() {
+        if (callbackNewline) {
+          connection.cb = function(d) {
+            var newLineIdx = connection.received.indexOf("\n");
+            if (newLineIdx>=0) {
+              var l = connection.received.substr(0,newLineIdx);
+              connection.received = connection.received.substr(newLineIdx+1);
+              connection.cb = undefined;
+              if (cbTimeout) clearTimeout(cbTimeout);
+              cbTimeout = undefined;
+              if (callback)
+                callback(l);
+              resolve(l);
+              isBusy = false;
+              handleQueue();
+            }
+          };
+        }
+        // wait for any received data if we have a callback...
+        var maxTime = 300; // 30 sec - Max time we wait in total, even if getting data
+        var dataWaitTime = callbackNewline ? 100/*10 sec  if waiting for newline*/ : 3/*300ms*/;
+        var maxDataTime = dataWaitTime; // max time we wait after having received data
+        cbTimeout = setTimeout(function timeout() {
+          cbTimeout = undefined;
+          if (maxTime) maxTime--;
+          if (maxDataTime) maxDataTime--;
+          if (connection.hadData) maxDataTime=dataWaitTime;
+          if (maxDataTime && maxTime) {
+            cbTimeout = setTimeout(timeout, 100);
+          } else {
             connection.cb = undefined;
-            if (cbTimeout) clearTimeout(cbTimeout);
-            cbTimeout = undefined;
+            if (callbackNewline)
+              log(2, "write waiting for newline timed out");
             if (callback)
-              callback(l);
+              callback(connection.received);
+            resolve(connection.received);
             isBusy = false;
             handleQueue();
+            connection.received = "";
           }
-        };
+          connection.hadData = false;
+        }, 100);
       }
-      // wait for any received data if we have a callback...
-      var maxTime = 300; // 30 sec - Max time we wait in total, even if getting data
-      var dataWaitTime = callbackNewline ? 100/*10 sec  if waiting for newline*/ : 3/*300ms*/;
-      var maxDataTime = dataWaitTime; // max time we wait after having received data
-      cbTimeout = setTimeout(function timeout() {
-        cbTimeout = undefined;
-        if (maxTime) maxTime--;
-        if (maxDataTime) maxDataTime--;
-        if (connection.hadData) maxDataTime=dataWaitTime;
-        if (maxDataTime && maxTime) {
-          cbTimeout = setTimeout(timeout, 100);
-        } else {
-          connection.cb = undefined;
-          if (callbackNewline)
-            log(2, "write waiting for newline timed out");
-          if (callback)
-            callback(connection.received);
-          isBusy = false;
-          handleQueue();
-          connection.received = "";
-        }
-        connection.hadData = false;
-      }, 100);
-    }
 
-    if (connection && connection.isOpen) {
-      if (!connection.txInProgress) connection.received = "";
-      isBusy = true;
-      return connection.write(data, onWritten);
-    }
+      if (connection && connection.isOpen) {
+        if (!connection.txInProgress) connection.received = "";
+        isBusy = true;
+        return connection.write(data, onWritten);
+      }
 
-    connection = connect(function(uart) {
-      isBusy = true;
-      connection.write(data, onWritten);
+      return connect().then(function(connection) {
+        isBusy = true;
+        connection.write(data, onWritten);
+      });
     });
   }
 
   function evaluate(expr, cb) {
     if (!checkIfSupported()) return;
-    if (isBusy) {
-      log(3, "Busy - adding eval to queue");
-      queue.push({type:"eval", expr:expr, cb:cb});
-      return;
-    }
-    write('\x10eval(process.env.CONSOLE).println(JSON.stringify('+expr+'))\n', function(d) {
+    if (isBusy)
+      return pushToQueue({type:"eval", expr:expr, cb:cb});
+    return write('\x10eval(process.env.CONSOLE).println(JSON.stringify('+expr+'))\n').then(function(d) {
       try {
         var json = JSON.parse(d.trim());
-        cb(json);
+        if (cb) cb(json);
+        return json;
       } catch (e) {
-        log(1, "Unable to decode "+JSON.stringify(d)+", got "+e.toString());
-        cb(null, "Unable to decode "+JSON.stringify(d)+", got "+e.toString());
+        let err = "Unable to decode "+JSON.stringify(d)+", got "+e.toString();
+        log(1, err);
+        if (cb) cb(null, err);
+        return Promise.reject(err);
       }
     }, true/*callbackNewline*/);
   };
@@ -730,7 +779,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.05",
+    version : "1.06",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
@@ -747,11 +796,15 @@ To do:
     },
     /** Connect to a new device - this creates a separate
      connection to the one `write` and `eval` use. */
-    connect : connect,
-    /// Write to a device and call back when the data is written.  Creates a connection if it doesn't exist
-    write : write,
-    /// Evaluate an expression and call cb with the result. Creates a connection if it doesn't exist
-    eval : evaluate,
+    connectAsync : connect, // connectAsync(options)
+    connect : (callback, options) => { // for backwards compatibility
+      connect(options).then(callback, err => callback(null,err));
+      return connection;
+    },
+    /// Write to a device and callback when the data is written (returns promise, or can take callback).  Creates a connection if it doesn't exist
+    write : write, // write(string, callback, callbackForNewline) -> Promise
+    /// Evaluate an expression and call cb with the result (returns promise, or can take callback). Creates a connection if it doesn't exist
+    eval : evaluate, // eval(expr_as_string, callback) -> Promise
     /// Write the current time to the device
     setTime : function(cb) {
       var d = new Date();
