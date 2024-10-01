@@ -90,13 +90,15 @@ var s = ""; for (var i=0;i<256;i++) s+=String.fromCharCode(i);
 UART.getConnection().espruinoSendFile("testbin",s,{fs:true})
 
 UART.debug=3;
-var s = ""; for (var i=0;i<256;i++) s+=String.fromCharCode(i)
-UART.getConnection().espruinoSendFile("testbin",s)
+UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 
+
+UART.getConnection().espruinoSendFile("testbin",s)
 
 ChangeLog:
 
 ...
+1.07: Added UART.getConnection().espruinoEval
 1.06: Added optional serialPort parameter to UART.connect(), allowing a known Web Serial port to be used
       Added connectAsync, and write/eval now return promises
 1.05: Better handling of Web Serial disconnects
@@ -119,7 +121,6 @@ To do:
 
 * move 'connection.received' handling into removeListener and add an upper limit (100k?)
 * add a 'line' event for each line of data that's received
-* add espruinoEval method using the new packet system
 * move XON/XOFF handling into Connection.rxDataHandler
 
 */
@@ -159,6 +160,214 @@ To do:
     return buf;
   }
 
+  // parse a very relaxed version of JSON (returns undefined on failure)
+  // Originally from https://github.com/espruino/EspruinoAppLoaderCore/blob/master/js/utils.js
+  // Lexer from https://github.com/espruino/EspruinoTools/blob/master/core/utils.js
+  function parseRJSON(str) {
+    let lex = (function(str) { // Nasty lexer - no comments/etc
+      var chAlpha="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
+      var chNum="0123456789";
+      var chAlphaNum = chAlpha+chNum;
+      var chWhiteSpace=" \t\n\r";
+      // https://www-archive.mozilla.org/js/language/js20-2000-07/rationale/syntax.html#regular-expressions
+      var allowedRegExIDs = ["abstract","break","case","catch","class","const","continue","debugger","default",
+      "delete","do","else","enum","eval","export","extends","field","final","finally","for","function","goto",
+      "if","implements","import","in","instanceof","native","new","package","private","protected","public",
+      "return","static","switch","synchronized","throw","throws","transient","try","typeof","var","volatile","while","with"];
+      var allowedRegExChars = ['!','%','&','*','+','-','/','<','=','>','?','[','{','}','(',',',';',':']; // based on Espruino jslex.c (may not match spec 100%)
+      var ch;
+      var idx = 0;
+      var lineNumber = 1;
+      var nextCh = function() {
+        ch = str[idx++];
+        if (ch=="\n") lineNumber++;
+      };
+      var backCh = function() {
+        idx--;
+        ch = str[idx-1];
+      };
+      nextCh();
+      var isIn = function(s,c) { return s.indexOf(c)>=0; } ;
+      var lastToken = {};
+      var nextToken = function() {
+        while (isIn(chWhiteSpace,ch)) {
+          nextCh();
+        }
+        if (ch==undefined) return undefined;
+        if (ch=="/") {
+          nextCh();
+          if (ch=="/") {
+            // single line comment
+            while (ch!==undefined && ch!="\n") nextCh();
+            return nextToken();
+          } else if (ch=="*") {
+            nextCh();
+            var last = ch;
+            nextCh();
+            // multiline comment
+            while (ch!==undefined && !(last=="*" && ch=="/")) {
+              last = ch;
+              nextCh();
+            }
+            nextCh();
+            return nextToken();
+          } else {
+            backCh(); // push the char back
+          }
+        }
+        var s = "";
+        var type, value;
+        var startIdx = idx-1;
+        if (isIn(chAlpha,ch)) { // ID
+          type = "ID";
+          do {
+            s+=ch;
+            nextCh();
+          } while (isIn(chAlphaNum,ch));
+        } else if (isIn(chNum,ch)) { // NUMBER
+          type = "NUMBER";
+          var chRange = chNum;
+          if (ch=="0") { // Handle
+            s+=ch;
+            nextCh();
+            if ("xXoObB".indexOf(ch)>=0) {
+              if (ch=="b" || ch=="B") chRange="01";
+              if (ch=="o" || ch=="O") chRange="01234567";
+              if (ch=="x" || ch=="X") chRange="0123456789ABCDEFabcdef";
+              s+=ch;
+              nextCh();
+            }
+          }
+          while (isIn(chRange,ch) || ch==".") {
+            s+=ch;
+            nextCh();
+          }
+        } else if (isIn("\"'`/",ch)) { // STRING or regex
+          s+=ch;
+          var q = ch;
+          nextCh();
+          // Handle case where '/' is just a divide character, not RegEx
+          if (s=='/' && (lastToken.type=="STRING" || lastToken.type=="NUMBER" ||
+                          (lastToken.type=="ID" && !allowedRegExIDs.includes(lastToken.str)) ||
+                          (lastToken.type=="CHAR" && !allowedRegExChars.includes(lastToken.str))
+                        )) {
+            // https://www-archive.mozilla.org/js/language/js20-2000-07/rationale/syntax.html#regular-expressions
+            type = "CHAR";
+          } else {
+            type = "STRING"; // should we report this as REGEX?
+            value = "";
+
+            while (ch!==undefined && ch!=q) {
+              if (ch=="\\") { // handle escape characters
+                nextCh();
+                var escape = '\\'+ch;
+                var escapeExtra = 0;
+                if (ch=="x") {
+                  nextCh();escape += ch;
+                  nextCh();escape += ch;
+                  value += String.fromCharCode(parseInt(escape.substr(2), 16));
+                } else if (ch=="u") {
+                  nextCh();escape += ch;
+                  nextCh();escape += ch;
+                  nextCh();escape += ch;
+                  nextCh();escape += ch;
+                  value += String.fromCharCode(parseInt(escape.substr(2), 16));
+                } else {
+                  try {
+                    value += JSON.parse('"'+escape+'"');
+                  } catch (e) {
+                    value += escape;
+                  }
+                }
+                s += escape;
+              } else {
+                s+=ch;
+                value += ch;
+              }
+              nextCh();
+            };
+            if (ch!==undefined) s+=ch;
+            nextCh();
+          }
+        } else {
+          type = "CHAR";
+          s+=ch;
+          nextCh();
+        }
+        if (value===undefined) value=s;
+        return lastToken={type:type, str:s, value:value, startIdx:startIdx, endIdx:idx-1, lineNumber:lineNumber};
+      };
+
+      return {
+        next : nextToken
+      };
+    })(str);
+    let tok = lex.next();
+    function match(s) {
+      if (tok.str!=s) throw new Error("Expecting "+s+" got "+JSON.stringify(tok.str));
+      tok = lex.next();
+    }
+
+    function recurse() {
+      let final = "";
+      while (tok!==undefined) {
+        if (tok.type == "NUMBER") {
+          let v = parseFloat(tok.str);
+          tok = lex.next();
+          return v;
+        }
+        if (tok.str == "-") {
+          tok = lex.next();
+          let v = -parseFloat(tok.str);
+          tok = lex.next();
+          return v;
+        }
+        if (tok.type == "STRING") {
+          let v = tok.value;
+          tok = lex.next();
+          return v;
+        }
+        if (tok.type == "ID") switch (tok.str) {
+          case "true" : tok = lex.next(); return true;
+          case "false" : tok = lex.next(); return false;
+          case "null" : tok = lex.next(); return null;
+        }
+        if (tok.str == "[") {
+          tok = lex.next();
+          let arr = [];
+          while (tok.str != ']') {
+            arr.push(recurse());
+            if (tok.str != ']') match(",");
+          }
+          match("]");
+          return arr;
+        }
+        if (tok.str == "{") {
+          tok = lex.next();
+          let obj = {};
+          while (tok.str != '}') {
+            let key = tok.type=="STRING" ? tok.value : tok.str;
+            tok = lex.next();
+            match(":");
+            obj[key] = recurse();
+            if (tok.str != '}') match(",");
+          }
+          match("}");
+          return obj;
+        }
+        match("EOF");
+      }
+    }
+
+    let json = undefined;
+    try {
+      json = recurse();
+    } catch (e) {
+      console.log("RJSON parse error", e);
+    }
+    return json;
+  }
+
   function handleQueue() {
     if (!queue.length) return;
     var q = queue.shift();
@@ -174,23 +383,42 @@ To do:
 
   /// Base connection class - BLE/Serial add their write/etc on top of this
   class Connection {
-    // on/emit work for close/data/open/error/ack/nak events
+    // on/emit work for close/data/open/error/ack/nak/packet events
     on(evt,cb) { let e = "on"+evt; if (!this[e]) this[e]=[]; this[e].push(cb); }; // on only works with a single handler
-    emit(evt,data) { let e = "on"+evt;  if (this[e]) this[e].forEach(fn=>fn(data)); };
+    emit(evt,data1,data2) { let e = "on"+evt;  if (this[e]) this[e].forEach(fn=>fn(data1,data2)); };
     removeListener(evt,callback) { let e = "on"+evt;  if (this[e]) this[e]=this[e].filter(fn=>fn!=callback); };
     isOpen = false;       // is the connection actually open?
     isOpening = true;     // in the process of opening a connection?
     txInProgress = false; // is transmission in progress?
     parsePackets = false; // If set we parse the input stream for Espruino packet data transfers
     received = "";        // The data we've received so far - this gets reset by .write/eval/etc
-    hadData = false;      // used when waiting for a block of data to finish being receivd
+    hadData = false;      // used when waiting for a block of data to finish being received
+    rxDataHandlerLastCh = 0; // used by rxDataHandler - last received character
+    rxDataHandlerPacket = undefined; // used by rxDataHandler - used for parsing
+    rxDataHandlerTimeout = undefined; // timeout for unfinished packet
     rxDataHandler(data) { // Called when data is received, and passed it on to event listeners
       log(3, "Received "+JSON.stringify(data));
       // TODO: handle XON/XOFF centrally here?
       if (this.parsePackets) {
         for (var i=0;i<data.length;i++) {
           let ch = data[i];
-          if (ch=="\x06") {
+          // handle packet reception
+          if (this.rxDataHandlerPacket!==undefined) {
+            this.rxDataHandlerPacket += ch;
+            ch = undefined;
+            let flags = (this.rxDataHandlerPacket.charCodeAt(0)<<8) | this.rxDataHandlerPacket.charCodeAt(1);
+            let len = flags & 0x1FFF;
+            let rxLen = this.rxDataHandlerPacket.length;
+            if (rxLen>2 && rxLen>=(len+2)) {
+              log(3, "Got packet end");
+              if (this.rxDataHandlerTimeout) {
+                clearTimeout(this.rxDataHandlerTimeout);
+                this.rxDataHandlerTimeout = undefined;
+              }
+              this.emit("packet", flags&0xE000, this.rxDataHandlerPacket.substring(2));
+              this.rxDataHandlerPacket = undefined; // stop packet reception
+            }
+          } else if (ch=="\x06") { // handle individual control chars
             log(3, "Got ACK");
             this.emit("ack");
             ch = undefined;
@@ -198,11 +426,24 @@ To do:
             log(3, "Got NAK");
             this.emit("nak");
             ch = undefined;
+          } else if (ch=="\x10") { // DLE - potential start of packet (ignore)
+            this.rxDataHandlerLastCh = "\x10";
+            ch = undefined;
+          } else if (ch=="\x01" && this.rxDataHandlerLastCh=="\x10") { // SOH
+            log(3, "Got packet start");
+            this.rxDataHandlerPacket = "";
+            this.rxDataHandlerTimeout = setTimeout(()=>{
+              this.rxDataHandlerTimeout = undefined;
+              log(0, "Packet timeout (1s)");
+              this.rxDataHandlerPacket = undefined;
+            }, 1000);
+            ch = undefined;
           }
           if (ch===undefined) { // if we're supposed to remove the char, do it
             data = data.substring(0,i-1)+data.substring(i+1);
             i--;
-          }
+          } else
+            this.rxDataHandlerLastCh = ch;
         }
       }
       // keep track of received data
@@ -299,6 +540,41 @@ To do:
         data = data.substring(CHUNK);
         return connection.espruinoSendPacket("DATA", packet, packetOptions).then(sendData);
       }
+    }
+    /* Send a JS expression to be evaluated on Espruino using using 2v25 packets. */
+    espruinoEval(expr) {
+      if ("string"!=typeof expr) throw new Error("'expr' must be a String");
+      let connection = this;
+      let resolve, reject, timeout;
+      let promise = new Promise((_resolve,_reject) => {
+        resolve = _resolve;
+        reject = _reject;
+      });
+      function cleanup() {
+        connection.removeListener("packet", onPacket);
+        if (timeout) {
+          clearTimeout(timeout);
+          timeout = undefined;
+        }
+      }
+      function onPacket(type,data) {
+        if (type!=0) return; // ignore things that are not a response
+        resolve(parseRJSON(data));
+        cleanup();
+      }
+      connection.parsePackets = true;
+      connection.on("packet", onPacket);
+      timeout = setTimeout(() => {
+        timeout = undefined;
+        cleanup();
+        reject("espruinoEval Timeout");
+      }, 1000);
+      return connection.espruinoSendPacket("EVAL",expr).then(()=>{
+        return promise;
+      }, err => {
+        cleanup();
+        return Promise.reject(err);
+      });
     }
   };
 
@@ -779,7 +1055,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.06",
+    version : "1.07",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
