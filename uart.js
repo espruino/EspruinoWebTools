@@ -79,21 +79,10 @@ As of Espruino 2v25 you can also send data packets:
 UART.getConnection().espruinoSendFile("test.txt","This is a test of sending data to Espruino").then(_=>console.log("Done"))
 UART.getConnection().espruinoSendFile("test.txt","This is a test of sending data to Espruino's SD card",{fs:true}).then(_=>console.log("Done"))
 
-UART.debug=3;
-var s = ""; for (var i=0;i<256;i++) s+=String.fromCharCode(i);
-var ss = ""; for (var i=0;i<256;i++) ss+=s;
-UART.getConnection().espruinoSendFile("testbin",ss,{fs:true})
+Or evaluate JS on the device and return the response as a JS object:
 
-
-UART.debug=3;
-var s = ""; for (var i=0;i<256;i++) s+=String.fromCharCode(i);
-UART.getConnection().espruinoSendFile("testbin",s,{fs:true})
-
-UART.debug=3;
 UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 
-
-UART.getConnection().espruinoSendFile("testbin",s)
 
 ChangeLog:
 
