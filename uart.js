@@ -435,11 +435,11 @@ To do:
             this.rxDataHandlerLastCh = ch;
         }
       }
+      this.hadData = true;
       if (data.length>0) {
         // keep track of received data
         if (this.received.length < 100000) // ensure we're not creating a memory leak
           this.received += data;
-        this.hadData = true;
         // forward any data
         if (this.cb) this.cb(data);
         this.emit('data', data);
@@ -532,39 +532,41 @@ To do:
         return connection.espruinoSendPacket("DATA", packet, packetOptions).then(sendData);
       }
     }
-    /* Send a JS expression to be evaluated on Espruino using using 2v25 packets. */
-    espruinoEval(expr) {
+    /* Send a JS expression to be evaluated on Espruino using using 2v25 packets.
+        options = {
+           timeout : int // milliseconds timeout
+        }*/
+    espruinoEval(expr, options) {
+      options = options || {};
       if ("string"!=typeof expr) throw new Error("'expr' must be a String");
       let connection = this;
       let resolve, reject, timeout;
-      let promise = new Promise((_resolve,_reject) => {
-        resolve = _resolve;
-        reject = _reject;
-      });
-      function cleanup() {
-        connection.removeListener("packet", onPacket);
-        if (timeout) {
-          clearTimeout(timeout);
-          timeout = undefined;
+      return new Promise((resolve,reject) => {
+        function cleanup() {
+          connection.removeListener("packet", onPacket);
+          if (timeout) {
+            clearTimeout(timeout);
+            timeout = undefined;
+          }
         }
-      }
-      function onPacket(type,data) {
-        if (type!=0) return; // ignore things that are not a response
-        resolve(parseRJSON(data));
-        cleanup();
-      }
-      connection.parsePackets = true;
-      connection.on("packet", onPacket);
-      timeout = setTimeout(() => {
-        timeout = undefined;
-        cleanup();
-        reject("espruinoEval Timeout");
-      }, 1000);
-      return connection.espruinoSendPacket("EVAL",expr).then(()=>{
-        return promise;
-      }, err => {
-        cleanup();
-        return Promise.reject(err);
+        function onPacket(type,data) {
+          if (type!=0) return; // ignore things that are not a response
+          cleanup();
+          resolve(parseRJSON(data));
+        }
+        connection.parsePackets = true;
+        connection.on("packet", onPacket);
+        timeout = setTimeout(() => {
+          timeout = undefined;
+          cleanup();
+          reject("espruinoEval Timeout");
+        }, options.timeout || 1000);
+        connection.espruinoSendPacket("EVAL",expr).then(()=>{
+          // resolved/rejected with 'packet' event or timeout
+        }, err => {
+          cleanup();
+          reject(err);
+        });
       });
     }
   };
@@ -779,12 +781,14 @@ To do:
           writer.releaseLock();
           writer = undefined;
           log(3, "Sent");
-          callback();
+          if (callback) callback();
         }).catch(function(error) {
+          if (writer) {
           writer.releaseLock();
+            writer.close();
+          }
           writer = undefined;
           log(0,'SEND ERROR: ' + error);
-          closeSerial();
         });
       };
 
