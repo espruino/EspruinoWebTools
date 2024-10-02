@@ -435,13 +435,15 @@ To do:
             this.rxDataHandlerLastCh = ch;
         }
       }
-      // keep track of received data
-      if (this.received.length < 100000) // ensure we're not creating a memory leak
-        this.received += data;
-      this.hadData = true;
-      // forward any data
-      if (this.cb) this.cb(data);
-      this.emit('data', data);
+      if (data.length>0) {
+        // keep track of received data
+        if (this.received.length < 100000) // ensure we're not creating a memory leak
+          this.received += data;
+        this.hadData = true;
+        // forward any data
+        if (this.cb) this.cb(data);
+        this.emit('data', data);
+      }
     }
 
     /* Send a packet of type "RESPONSE/EVAL/EVENT/FILE_SEND/DATA" to Espruino
