@@ -87,6 +87,8 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.08: Add UART.getConnectionAsync()
+      Add .espruinoEval(... {stmFix:true}) to work around occasional STM32 USB issue in 2v24 and earlier firmwares
 1.07: Added UART.getConnection().espruinoEval
 1.06: Added optional serialPort parameter to UART.connect(), allowing a known Web Serial port to be used
       Added connectAsync, and write/eval now return promises
@@ -535,18 +537,24 @@ To do:
     /* Send a JS expression to be evaluated on Espruino using using 2v25 packets.
         options = {
            timeout : int // milliseconds timeout
+           stmFix : bool // if set, this works around an issue in Espruino STM32 2v24 and earlier where USB could get in a state where it only sent small chunks of data at a time
         }*/
     espruinoEval(expr, options) {
       options = options || {};
       if ("string"!=typeof expr) throw new Error("'expr' must be a String");
       let connection = this;
-      let resolve, reject, timeout;
       return new Promise((resolve,reject) => {
+        let prodInterval;
+
         function cleanup() {
           connection.removeListener("packet", onPacket);
           if (timeout) {
             clearTimeout(timeout);
             timeout = undefined;
+          }
+          if (prodInterval) {
+            clearInterval(prodInterval);
+            prodInterval = undefined;
           }
         }
         function onPacket(type,data) {
@@ -556,13 +564,17 @@ To do:
         }
         connection.parsePackets = true;
         connection.on("packet", onPacket);
-        timeout = setTimeout(() => {
+        let timeout = setTimeout(() => {
           timeout = undefined;
           cleanup();
           reject("espruinoEval Timeout");
         }, options.timeout || 1000);
-        connection.espruinoSendPacket("EVAL",expr).then(()=>{
+        connection.espruinoSendPacket("EVAL",expr,{noACK:options.stmFix}).then(()=>{
           // resolved/rejected with 'packet' event or timeout
+          if (options.stmFix)
+            prodInterval = setInterval(function() {
+              connection.write(" \x08"); // space+backspace
+            }, 50);
         }, err => {
           cleanup();
           reject(err);
@@ -1050,7 +1062,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.07",
+    version : "1.08",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
@@ -1088,9 +1100,13 @@ To do:
     isConnected : function() {
       return connection!==undefined;
     },
-    /// get the connection used by `write` and `eval`
+    /// get the connection used by `write` and `eval`, or return undefined
     getConnection : function() {
       return connection;
+    },
+    /// Return a promise with the connection used by `write` and `eval`, and if there's no connection attempt to get one
+    getConnectionAsync : function() {
+      return connection ? Promise.resolve(connection) : uart.connectAsync();
     },
     /// Close the connection used by `write` and `eval`
     close : function() {
