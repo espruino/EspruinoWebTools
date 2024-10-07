@@ -89,6 +89,8 @@ ChangeLog:
 ...
 1.08: Add UART.getConnectionAsync()
       Add .espruinoEval(... {stmFix:true}) to work around occasional STM32 USB issue in 2v24 and earlier firmwares
+      1s->2s packet timeout
+      connection.write now returns a promise
 1.07: Added UART.getConnection().espruinoEval
 1.06: Added optional serialPort parameter to UART.connect(), allowing a known Web Serial port to be used
       Added connectAsync, and write/eval now return promises
@@ -425,9 +427,9 @@ To do:
             this.rxDataHandlerPacket = "";
             this.rxDataHandlerTimeout = setTimeout(()=>{
               this.rxDataHandlerTimeout = undefined;
-              log(0, "Packet timeout (1s)");
+              log(0, "Packet timeout (2s)");
               this.rxDataHandlerPacket = undefined;
-            }, 1000);
+            }, 2000);
             ch = undefined;
           }
           if (ch===undefined) { // if we're supposed to remove the char, do it
@@ -641,45 +643,49 @@ To do:
       };
 
       connection.write = function(data, callback) {
-        if (data) txDataQueue.push({data:data,callback:callback,maxLength:data.length});
-        if (connection.isOpen && !connection.txInProgress) writeChunk();
+        return new Promise((resolve,reject) => {
+          if (data) txDataQueue.push({data:data,callback:callback,maxLength:data.length,resolve:resolve});
+          if (connection.isOpen && !connection.txInProgress) writeChunk();
 
-        function writeChunk() {
-          if (flowControlXOFF) { // flow control - try again later
-            setTimeout(writeChunk, 50);
-            return;
-          }
-          var chunk;
-          if (!txDataQueue.length) {
-            uart.writeProgress();
-            return;
-          }
-          var txItem = txDataQueue[0];
-          uart.writeProgress(txItem.maxLength - txItem.data.length, txItem.maxLength);
-          if (txItem.data.length <= chunkSize) {
-            chunk = txItem.data;
-            txItem.data = undefined;
-          } else {
-            chunk = txItem.data.substr(0,chunkSize);
-            txItem.data = txItem.data.substr(chunkSize);
-          }
-          connection.txInProgress = true;
-          log(2, "Sending "+ JSON.stringify(chunk));
-          txCharacteristic.writeValue(str2ab(chunk)).then(function() {
-            log(3, "Sent");
-            if (!txItem.data) {
-              txDataQueue.shift(); // remove this element
-              if (txItem.callback)
-                txItem.callback();
+          function writeChunk() {
+            if (flowControlXOFF) { // flow control - try again later
+              setTimeout(writeChunk, 50);
+              return;
             }
-            connection.txInProgress = false;
-            writeChunk();
-          }).catch(function(error) {
-            log(1, 'SEND ERROR: ' + error);
-            txDataQueue = [];
-            connection.close();
-          });
-        }
+            var chunk;
+            if (!txDataQueue.length) {
+              uart.writeProgress();
+              return;
+            }
+            var txItem = txDataQueue[0];
+            uart.writeProgress(txItem.maxLength - txItem.data.length, txItem.maxLength);
+            if (txItem.data.length <= chunkSize) {
+              chunk = txItem.data;
+              txItem.data = undefined;
+            } else {
+              chunk = txItem.data.substr(0,chunkSize);
+              txItem.data = txItem.data.substr(chunkSize);
+            }
+            connection.txInProgress = true;
+            log(2, "Sending "+ JSON.stringify(chunk));
+            txCharacteristic.writeValue(str2ab(chunk)).then(function() {
+              log(3, "Sent");
+              if (!txItem.data) {
+                txDataQueue.shift(); // remove this element
+                if (txItem.callback)
+                  txItem.callback();
+                if (txItem.resolve)
+                  txItem.resolve();
+              }
+              connection.txInProgress = false;
+              writeChunk();
+            }).catch(function(error) {
+              log(1, 'SEND ERROR: ' + error);
+              txDataQueue = [];
+              connection.close();
+            });
+          }
+        });
       };
 
       return navigator.bluetooth.requestDevice(uart.optionsBluetooth).then(function(device) {
@@ -789,11 +795,13 @@ To do:
         // TODO: progress?
         writer = serialPort.writable.getWriter();
         log(2, "Sending "+ JSON.stringify(data));
-        writer.write(str2ab(data)).then(function() {
+        return new Promise((resolve, reject) => {
+          writer.write(str2ab(data)).then(function() {
           writer.releaseLock();
           writer = undefined;
           log(3, "Sent");
           if (callback) callback();
+            resolve();
         }).catch(function(error) {
           if (writer) {
           writer.releaseLock();
@@ -801,6 +809,8 @@ To do:
           }
           writer = undefined;
           log(0,'SEND ERROR: ' + error);
+            reject(error);
+          });
         });
       };
 
