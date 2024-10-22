@@ -793,22 +793,23 @@ To do:
       };
       connection.write = function(data, callback) {
         // TODO: progress?
-        writer = serialPort.writable.getWriter();
-        log(2, "Sending "+ JSON.stringify(data));
         return new Promise((resolve, reject) => {
+          if (!serialPort) reject ("Not connected");
+          writer = serialPort.writable.getWriter();
+          log(2, "Sending "+ JSON.stringify(data));
           writer.write(str2ab(data)).then(function() {
-          writer.releaseLock();
-          writer = undefined;
-          log(3, "Sent");
-          if (callback) callback();
+            writer.releaseLock();
+            writer = undefined;
+            log(3, "Sent");
+            if (callback) callback();
             resolve();
-        }).catch(function(error) {
-          if (writer) {
-          writer.releaseLock();
-            writer.close();
-          }
-          writer = undefined;
-          log(0,'SEND ERROR: ' + error);
+          }).catch(function(error) {
+            if (writer) {
+              writer.releaseLock();
+              writer.close();
+            }
+            writer = undefined;
+            log(0,'SEND ERROR: ' + error);
             reject(error);
           });
         });
