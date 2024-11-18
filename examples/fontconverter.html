@@ -378,7 +378,7 @@
       e.preventDefault();
       getFontLinkAndName(loadFontAndCalculate);
     });
-    document.getElementById('fontSize').addEventListener('mousemove',function() {
+    document.getElementById('fontSize').addEventListener('input',function() {
       document.getElementById('fontSizeText').innerHTML = document.getElementById('fontSize').value;
     });
     document.getElementById("fontForm").addEventListener('submit', function(e) {
