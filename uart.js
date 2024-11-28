@@ -492,6 +492,9 @@ To do:
           if (options.noACK) {
             resolve(); // if not listening for acks, just resolve immediately
           }
+        }, err => {
+          tidy();
+          reject(err);
         });
       });
     }
@@ -575,7 +578,11 @@ To do:
           // resolved/rejected with 'packet' event or timeout
           if (options.stmFix)
             prodInterval = setInterval(function() {
-              connection.write(" \x08"); // space+backspace
+              connection.write(" \x08") // space+backspace
+              .catch(err=>{
+                console.error("Error sending STM fix:",err);
+                cleanup();
+              }); 
             }, 50);
         }, err => {
           cleanup();
@@ -791,10 +798,17 @@ To do:
         }
         // readLoop will finish and *that* calls disconnect and cleans up
       };
-      connection.write = function(data, callback) {
+      connection.write = function(data, callback, alreadyRetried) {
         // TODO: progress?
         return new Promise((resolve, reject) => {
-          if (!serialPort) reject ("Not connected");
+          if (!serialPort || !serialPort.writable) return reject ("Not connected");
+          if (serialPort.writable.locked) {
+            if (alreadyRetried)
+              return reject("Writable stream is locked");
+            log(0,'Writable stream is locked - retry in 500ms');
+            setTimeout(()=>{ this.write(data, callback, true).then(resolve, reject); }, 500);
+            return;
+          }
           writer = serialPort.writable.getWriter();
           log(2, "Sending "+ JSON.stringify(data));
           writer.write(str2ab(data)).then(function() {
