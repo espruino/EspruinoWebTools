@@ -486,11 +486,11 @@ To do:
         }
         function onACK(ok) {
           tidy();
-          resolve();
+          setTimeout(resolve,0);
         }
         function onNAK(ok) {
           tidy();
-          reject();
+          setTimeout(reject,0);
         }
         if (!options.noACK) {
           connection.parsePackets = true;
@@ -501,7 +501,7 @@ To do:
         connection.write(String.fromCharCode(/*DLE*/16,/*SOH*/1,(flags>>8)&0xFF,flags&0xFF)+data, function() {
           // write complete
           if (options.noACK) {
-            resolve(); // if not listening for acks, just resolve immediately
+            setTimeout(resolve,0); // if not listening for acks, just resolve immediately
           }
         }, err => {
           tidy();
@@ -582,7 +582,7 @@ To do:
           if (type!=0x8000) return; // ignore things that are not DATA packet
           if (data.length==0) { // 0 length packet = EOF
             cleanup();
-            resolve(fileContents);
+            setTimeout(resolve,0,fileContents);
           } else {
             fileContents += data;
             scheduleTimeout();
@@ -625,7 +625,7 @@ To do:
         function onPacket(type,data) {
           if (type!=0) return; // ignore things that are not a response
           cleanup();
-          resolve(parseRJSON(data));
+          setTimeout(resolve,0,parseRJSON(data));
         }
         connection.parsePackets = true;
         connection.on("packet", onPacket);
