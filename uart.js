@@ -74,10 +74,14 @@ UART.ports = ["Web Serial"]; // force only Web Serial to be used
 UART.debug = 3; // show all debug messages
 etc...
 
-As of Espruino 2v25 you can also send data packets:
+As of Espruino 2v25 you can also send files:
 
 UART.getConnection().espruinoSendFile("test.txt","This is a test of sending data to Espruino").then(_=>console.log("Done"))
 UART.getConnection().espruinoSendFile("test.txt","This is a test of sending data to Espruino's SD card",{fs:true}).then(_=>console.log("Done"))
+
+And receive them:
+
+UART.getConnection().espruinoReceiveFile("test.txt", {}).then(contents=>console.log("Received", JSON.stringify(contents)));
 
 Or evaluate JS on the device and return the response as a JS object:
 
@@ -380,6 +384,12 @@ To do:
     on(evt,cb) { let e = "on"+evt; if (!this[e]) this[e]=[]; this[e].push(cb); }; // on only works with a single handler
     emit(evt,data1,data2) { let e = "on"+evt;  if (this[e]) this[e].forEach(fn=>fn(data1,data2)); };
     removeListener(evt,callback) { let e = "on"+evt;  if (this[e]) this[e]=this[e].filter(fn=>fn!=callback); };
+    // on("open", () => ... ) connection opened
+    // on("close", () => ... ) connection closed
+    // on("data", (data) => ... ) when data is received (as string)
+    // on("packet", (type,data) => ... ) when a packet is received (if .parsePackets=true)
+    // on("ack", () => ... ) when an ACK is received (if .parsePackets=true)
+    // on("nak", () => ... ) when an ACK is received (if .parsePackets=true)
     isOpen = false;       // is the connection actually open?
     isOpening = true;     // in the process of opening a connection?
     txInProgress = false; // is transmission in progress?
@@ -402,7 +412,7 @@ To do:
             let flags = (this.rxDataHandlerPacket.charCodeAt(0)<<8) | this.rxDataHandlerPacket.charCodeAt(1);
             let len = flags & 0x1FFF;
             let rxLen = this.rxDataHandlerPacket.length;
-            if (rxLen>2 && rxLen>=(len+2)) {
+            if (rxLen>=2 && rxLen>=(len+2)) {
               log(3, "Got packet end");
               if (this.rxDataHandlerTimeout) {
                 clearTimeout(this.rxDataHandlerTimeout);
@@ -433,7 +443,7 @@ To do:
             ch = undefined;
           }
           if (ch===undefined) { // if we're supposed to remove the char, do it
-            data = data.substring(0,i-1)+data.substring(i+1);
+            data = data.substring(0,i)+data.substring(i+1);
             i--;
           } else
             this.rxDataHandlerLastCh = ch;
@@ -465,6 +475,7 @@ To do:
         EVENT : 0x4000, // parse as JSON and create `E.on('packet', ...)` event
         FILE_SEND : 0x6000, // called before DATA, with {fn:"filename",s:123}
         DATA : 0x8000, // Sent after FILE_SEND with blocks of data for the file
+        FILE_RECV : 0xA000 // receive a file - returns a series of PT_TYPE_DATA packets, with a final zero length packet to end
       }
       if (!pkType in PKTYPES) throw new Error("'pkType' not one of "+Object.keys(PKTYPES));
       let connection = this;
@@ -504,6 +515,7 @@ To do:
          noACK : bool // (don't wait to acknowledgements)
          chunkSize : int // size of chunks to send (default 1024) for safety this depends on how big your device's input buffer is if there isn't flow control
          progress : (chunkNo,chunkCount)=>{} // callback to report upload progress
+         timeout : int (optional, milliseconds, default=1000)
    } */
     espruinoSendFile(filename, data, options) {
       if ("string"!=typeof data) throw new Error("'data' must be a String");
@@ -539,9 +551,57 @@ To do:
         return connection.espruinoSendPacket("DATA", packet, packetOptions).then(sendData);
       }
     }
+    /* Receive a file from Espruino using 2v25 packets.
+       options = { // mainly passed to Espruino
+         fs : true // optional -> write using require("fs") (to SD card)
+         timeout : int // milliseconds timeout (default=1000)
+       }
+   } */
+    espruinoReceiveFile(filename, options) {
+      options = options||{};
+      options.fn = filename;
+      let connection = this;
+      return new Promise((resolve,reject) => {
+        let fileContents = "", timeout;
+        function scheduleTimeout() {
+          if (timeout) clearTimeout(timeout);
+          timeout = setTimeout(() => {
+            timeout = undefined;
+            cleanup();
+            reject("espruinoReceiveFile Timeout");
+          }, options.timeout || 1000);
+        } 
+        function cleanup() {
+          connection.removeListener("packet", onPacket);
+          if (timeout) {
+            clearTimeout(timeout);
+            timeout = undefined;
+          }
+        }
+        function onPacket(type,data) {
+          if (type!=0x8000) return; // ignore things that are not DATA packet
+          if (data.length==0) { // 0 length packet = EOF
+            cleanup();
+            resolve(fileContents);
+          } else {
+            fileContents += data;
+            scheduleTimeout();
+          }
+        }
+        connection.parsePackets = true;
+        connection.on("packet", onPacket);
+        scheduleTimeout();
+        connection.espruinoSendPacket("FILE_RECV",JSON.stringify(options)).then(()=>{
+          // now wait...
+        }, err => {
+          cleanup();
+          reject(err);
+        });
+      });
+    }
     /* Send a JS expression to be evaluated on Espruino using using 2v25 packets.
         options = {
-           timeout : int // milliseconds timeout
+           timeout : int // milliseconds timeout (default=1000)
            stmFix : bool // if set, this works around an issue in Espruino STM32 2v24 and earlier where USB could get in a state where it only sent small chunks of data at a time
         }*/
     espruinoEval(expr, options) {
