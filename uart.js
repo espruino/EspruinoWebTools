@@ -1190,7 +1190,7 @@ To do:
     },
     /// Did `write` and `eval` manage to create a connection?
     isConnected : function() {
-      return connection!==undefined;
+      return connection!==undefined && connection.isOpen;
     },
     /// get the connection used by `write` and `eval`, or return undefined
     getConnection : function() {
