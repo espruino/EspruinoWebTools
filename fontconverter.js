@@ -94,13 +94,12 @@ function Font(info) {
   this.name = info.name;
   this.id = this.name ? this.name.replace(/[^A-Za-z0-9]/g,"") : "Unknown";
   this.fn = info.fn;
-  this.height = info.height;
+  this.height = 0|info.height;
   this.bpp = info.bpp||1;
 
   this.range = info.range;
   if (!this.range)
     this.range = getRanges().ASCII.range;
-
 
   this.fixedWidth = !!info.fixedWidth;
   this.fullHeight = !!info.fullHeight; // output fonts at the full height available
@@ -324,6 +323,8 @@ function loadPBFF(fontInfo) {
     if (l.startsWith("version")) {
     } else if (l.startsWith("fallback")) {
     } else if (l.startsWith("line-height")) {
+      if (!fontInfo.fmHeight) // if no height specified
+        fontInfo.fmHeight = 0|l.split(" ")[1];
     } else if (l.startsWith("glyph")) {
       current = {};
       current.idx = parseInt(l.trim().split(" ")[1]);
@@ -749,6 +750,8 @@ Font.prototype.getPBF = function() {
 */
 Font.prototype.getPBFAsC = function(options) {
   var pbf = this.getPBF();
+  options = options||{};
+  if (!options.path) options.path="";
   require("fs").writeFileSync(options.path+options.filename+".h", `/*
  * This file is part of Espruino, a JavaScript interpreter for Microcontrollers
  *
@@ -893,7 +896,12 @@ function getRanges() {
     fn : "renaissance_28.pbff",
     height : 28, // actual used height of font map
     range : [ min:32, max:255 ]
-    yOffset : 4,
+  }
+
+  or:
+
+  {
+    fn : "font.bdf",  // Linux bitmap font format
   }
 
   or for a font made using https://www.pentacom.jp/pentacom/bitfontmaker2/
