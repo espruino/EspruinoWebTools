@@ -22,13 +22,16 @@ cli/fontconverter.js sourceFile
        --height #   - set the height of the font
        --range ${Object.keys(RANGES).join("|")} (default=ASCII)
                     - which range of characters should be included
+       --shiftUp #  - shift all font glyphs up by the given amount
+       --nudge      - automatically shift glyphs up or down to fit in the given font height
+       --doubleSize - double the size of this font using a pixel doubling algorithm
 
        --ojs fn.js   - save the font as JS - only works for <1000 chars
        --oh  fn.h    - save the font as a C header file (uses data for each char including blank ones)
        --opbf fn.pbf - save a binary PBF file
                       //  eg. require("fs").writeFileSync("font.pbf", Buffer.from(font.getPBF()))
-       --opbfc fn    - save a binary PBF file, but as a C file that can be included in Espruino
-                       (fn.c and fn.h are written)
+       --opbfc NAME    - save a binary PBF file, but as a C file that can be included in Espruino
+                       (jswrap_font_NAME.c/h are written)
 
 Input font can be:
       ...json       -  font made using https://www.pentacom.jp/pentacom/bitfontmaker2/
@@ -45,6 +48,12 @@ Input font can be:
     var range = RANGES[options.rangeId];
     if (!range) throw new Error(`Range ID ${options.rangeId} not found`);
     fontInfo.range = range.range;
+  } else if (arg=="--shiftUp") {
+    options.shiftUp = parseInt(process.argv[++i]);
+  } else if (arg=="--nudge") {
+    options.nudge = 1;
+  } else if (arg=="--doubleSize") {
+    options.doubleSize = 1;
   } else if (arg=="--ojs") {
     options.ojs = process.argv[++i];
   } else if (arg=="--oh") {
@@ -66,6 +75,12 @@ Input font can be:
 if (!fontInfo.fn) throw new Error("No font source file specified");
 // Do stuff
 var font = fontconverter.load(fontInfo);
+if (options.shiftUp)
+  font.shiftUp(options.shiftUp);
+if (options.nudge)
+  font.nudge();
+if (options.doubleSize)
+  font.doubleSize();
 if (options.debug) {
   font.debugChars();
   font.debugPixelsUsed();
@@ -77,4 +92,8 @@ if (options.oh)
 if (options.opbf)
   require("fs").writeFileSync(options.opbf, Buffer.from(font.getPBF()))
 if (options.opbfc)
-  font.getPBFAsC({filename:options.opbfc});
+  font.getPBFAsC({
+    name:options.opbfc,
+    filename:"jswrap_font_"+options.opbfc,
+    createdBy:"EspruinoWebTools/cli/fontconverter.js "+process.argv.slice(2).join(" ")
+  });
