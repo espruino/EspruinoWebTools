@@ -263,7 +263,7 @@ Font.prototype.getGlyph = function(ch, getPixel) {
   glyph.xEnd = xEnd;
   glyph.advance = glyph.xEnd+1;
   glyph.advance += this.glyphPadX; // if not full width, add a space after
-  if (!this.glyphPadX) glyph.advance++; // hack - add once space of padding
+  //if (!this.glyphPadX) glyph.advance++; // hack - add once space of padding
 
   if (this.fullHeight) {
     yStart = 0;
@@ -298,7 +298,7 @@ Font.prototype.nudge = function() {
 }
 
 /// Double the size of this font using a bitmap expandion algorithm
-Font.prototype.doubleSize = function() {
+Font.prototype.doubleSize = function(smooth) {
   this.glyphs.forEach(glyph => {
     glyph.xStart *= 2;
     glyph.yStart *= 2;
@@ -306,27 +306,33 @@ Font.prototype.doubleSize = function() {
     glyph.yEnd = glyph.yEnd*2 + 1;
     glyph.advance *= 2;
     var gp = glyph.getPixel.bind(glyph);
-    glyph.getPixel = (x,y) => {
-      var hx = x>>1;
-      var hy = y>>1;
-       /*   A
-       *  C P B
-       *    D
-       */
-       let A = gp(hx,hy-1);
-       let C = gp(hx-1,hy);
-       let P = gp(hx,hy);
-       let B = gp(hx+1,hy);
-       let D = gp(hx,hy+1);
-       //AdvMAME2×
-       let p1=P, p2=P, p3=P, p4=P;
-       if ((C==A) && (C!=D) && (A!=B)) p1=A;
-       if ((A==B) && (A!=C) && (B!=D)) p2=B;
-       if ((D==C) && (D!=B) && (C!=A)) p3=C;
-       if ((B==D) && (B!=A) && (D!=C)) p4=D;
-       let pixels = [[p1, p3], [p2, p4]];
-       return pixels[x&1][y&1];
-    };
+    if (smooth) {
+      glyph.getPixel = (x,y) => {
+        var hx = x>>1;
+        var hy = y>>1;
+        /*   A
+        *  C P B
+        *    D
+        */
+        let A = gp(hx,hy-1);
+        let C = gp(hx-1,hy);
+        let P = gp(hx,hy);
+        let B = gp(hx+1,hy);
+        let D = gp(hx,hy+1);
+        //AdvMAME2×
+        let p1=P, p2=P, p3=P, p4=P;
+        if ((C==A) && (C!=D) && (A!=B)) p1=A;
+        if ((A==B) && (A!=C) && (B!=D)) p2=B;
+        if ((D==C) && (D!=B) && (C!=A)) p3=C;
+        if ((B==D) && (B!=A) && (D!=C)) p4=D;
+        let pixels = [[p1, p3], [p2, p4]];
+        return pixels[x&1][y&1];
+      };
+    } else {
+      glyph.getPixel = (x,y) => {
+        return gp(x>>1,y>>1);
+      };
+    }
   });
   this.height *= 2;
   this.fmHeight *= 2;
@@ -409,7 +415,7 @@ function loadPBFF(fontInfo) {
         //console.log(current); // end of glyph
       } else {
         var verticalOffset = parseInt(l.trim().split(" ")[1]);
-        while (verticalOffset--) current.bmp.push("");
+        if (verticalOffset>0) while (verticalOffset--) current.bmp.push("");
       }
     } else if (l.startsWith(" ") || l.startsWith("#") || l=="") {
       current.bmp.push(l);
@@ -418,7 +424,7 @@ function loadPBFF(fontInfo) {
         console.log(current.idx+" bump height to "+current.bmp.length);
         fontInfo.fmHeight = current.bmp.length;
       }
-    } else if (l!="") console.log(`Unknown line '${l}'`);
+    } else if (l!="" && !l.startsWith("#")) console.log(`Unknown line '${l}'`);
   });
 
   fontInfo.generateGlyphs(function(ch,x,y) {
@@ -646,13 +652,71 @@ Font.prototype.getJS = function(options) {
 
 // Output to a C header file (only works for 6px wide)
 Font.prototype.getHeaderFile = function() {
-  var PACK_DEFINE = "PACK_5_TO_32";
-  var packedChars = 5;
-  var packedPixels = 6;
+  var name = this.fmWidth+"X"+this.height;
 
-  var charCodes = Object.keys(this.glyphs).sort();
+  var PACK_DEFINE, decl, packedChars, packedPixels, storageType;
+
+  if (this.fmWidth>4) {
+    PACK_DEFINE = "PACK_5_TO_32";
+    decl = `#define _____ 0
+#define ____X 1
+#define ___X_ 2
+#define ___XX 3
+#define __X__ 4
+#define __X_X 5
+#define __XX_ 6
+#define __XXX 7
+#define _X___ 8
+#define _X__X 9
+#define _X_X_ 10
+#define _X_XX 11
+#define _XX__ 12
+#define _XX_X 13
+#define _XXX_ 14
+#define _XXXX 15
+#define X____ 16
+#define X___X 17
+#define X__X_ 18
+#define X__XX 19
+#define X_X__ 20
+#define X_X_X 21
+#define X_XX_ 22
+#define X_XXX 23
+#define XX___ 24
+#define XX__X 25
+#define XX_X_ 26
+#define XX_XX 27
+#define XXX__ 28
+#define XXX_X 29
+#define XXXX_ 30
+#define XXXXX 31
+#define PACK_6_TO_32(A,B,C,D,E,F) ((A) | (B<<5) | (C<<10) | (D<<15) | (E<<20) | (F<<25))`;
+    storageType = "unsigned int";
+    packedChars = 5;
+    packedPixels = 6;
+  } else {
+    PACK_DEFINE = "PACK_5_TO_16";
+    decl = `#define ___ 0
+#define __X 1
+#define _X_ 2
+#define _XX 3
+#define X__ 4
+#define X_X 5
+#define XX_ 6
+#define XXX 7
+#define PACK_5_TO_16(A,B,C,D,E) ((A) | (B<<3) | (C<<6) | (D<<9) | (E<<12))`;
+    storageType = "unsigned short";
+    packedChars = 5;
+    packedPixels = 3;
+  }
+
+
+  var charCodes = Object.keys(this.glyphs).map(n=>0|n).sort((a,b) => a-b);
   var charMin = charCodes[0];
+  if (charMin==32) charMin++; // don't include space as it's a waste
   var charMax = charCodes[charCodes.length-1];
+  console.log(`Outputting chars ${charMin} -> ${charMax}`);
+
 
   function genChar(font, glyph) {
     var r = [];
@@ -666,7 +730,26 @@ Font.prototype.getHeaderFile = function() {
     return r;
   }
 
-  var header = "";
+  var header = `/*
+ * This file is part of Espruino, a JavaScript interpreter for Microcontrollers
+ *
+ * Copyright (C) 2013 Gordon Williams <gw@pur3.co.uk>
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * ----------------------------------------------------------------------------
+ * ${name.toLowerCase()} LCD font (but with last column as spaces)
+ * ----------------------------------------------------------------------------
+ */
+
+#include "bitmap_font_${name.toLowerCase()}.h"
+
+${decl}
+
+#define LCD_FONT_${name}_CHARS ${charMax+1-charMin}
+const ${storageType} LCD_FONT_${name}[] IN_FLASH_MEMORY = { // from ${charMin} up to ${charMax}\n`;
   var ch = charMin;
   while (ch <= charMax) {
     var chars = [];
@@ -688,6 +771,7 @@ Font.prototype.getHeaderFile = function() {
     }
     header += "\n";
   }
+  header += "};\n";
   return header;
 }
 
@@ -894,6 +978,37 @@ JsVar *jswrap_graphics_setFont${options.name}(JsVar *parent, int scale) {
 `);
 };
 
+// Output as a PBFF file as String
+Font.prototype.getPBFF = function() {
+  var pbff = `version 2
+line-height ${this.height}
+`;
+    //fallback 9647
+  // setup to ensure we're not writing entire glyphs
+  this.glyphPadX = 0;
+  this.fullHeight = false; // TODO: too late?
+  // now go through all glyphs
+  Object.keys(this.glyphs).forEach(ch => {
+    console.log(ch);
+    var g = this.glyphs[ch];
+
+   // glyph.appendBits(bits, {glyphVertical:false});
+    pbff += `glyph ${ch} ${String.fromCharCode(ch)}\n`;
+    pbff += `${"-".repeat(g.advance+1)} ${g.yStart}\n`;
+    for (var y=g.yStart;y<=g.yEnd;y++) {
+      var l = "";
+      for (var x=0;x<=g.xEnd;x++) {
+        var c  = g.getPixel(x,y);
+        l += c?"#":" ";
+      }
+      pbff += l.trimEnd()+`\n`;
+    }
+    pbff += `-\n`;
+  });
+
+  return pbff;
+}
+
 // Renders the given text to a on object { width, height, bpp:32, data : Uint32Array }
 Font.prototype.renderString = function(text) {
   // work out width
@@ -913,7 +1028,7 @@ Font.prototype.renderString = function(text) {
     if (!this.glyphs[ch]) continue;
     var g = this.glyphs[ch];
     for (var y=g.yStart;y<=g.yEnd;y++) {
-      for (var x=g.xStart;x<=g.yEnd;x++) {
+      for (var x=g.xStart;x<=g.xEnd;x++) {
         var c  = g.getPixel(x,y) << 8-bpp;
         c |= c>>bpp;
         c |= c>>(bpp*2);

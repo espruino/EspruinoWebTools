@@ -25,11 +25,14 @@ cli/fontconverter.js sourceFile
        --shiftUp #  - shift all font glyphs up by the given amount
        --nudge      - automatically shift glyphs up or down to fit in the given font height
        --doubleSize - double the size of this font using a pixel doubling algorithm
+       --doubleSize2 - double the size of this font using a smooth pixel doubling algorithm
+       --spaceWidth #
+                    - set the size (in pixels) of the space(32) character
 
        --ojs fn.js   - save the font as JS - only works for <1000 chars
        --oh  fn.h    - save the font as a C header file (uses data for each char including blank ones)
        --opbf fn.pbf - save a binary PBF file
-                      //  eg. require("fs").writeFileSync("font.pbf", Buffer.from(font.getPBF()))
+       --opbff fn.pbff save a text PBFF file
        --opbfc NAME    - save a binary PBF file, but as a C file that can be included in Espruino
                        (jswrap_font_NAME.c/h are written)
 
@@ -54,12 +57,18 @@ Input font can be:
     options.nudge = 1;
   } else if (arg=="--doubleSize") {
     options.doubleSize = 1;
+  } else if (arg=="--doubleSize2") {
+    options.doubleSize = 2;
+  } else if (arg=="--spaceWidth") {
+    options.spaceWidth = parseInt(process.argv[++i]);
   } else if (arg=="--ojs") {
     options.ojs = process.argv[++i];
   } else if (arg=="--oh") {
     options.oh = process.argv[++i];
   } else if (arg=="--opbf") {
     options.opbf = process.argv[++i];
+  } else if (arg=="--opbff") {
+    options.opbff = process.argv[++i];
   } else if (arg=="--opbfc") {
     options.opbfc = process.argv[++i];
   } else if (arg.startsWith("-")) {
@@ -80,7 +89,14 @@ if (options.shiftUp)
 if (options.nudge)
   font.nudge();
 if (options.doubleSize)
-  font.doubleSize();
+  font.doubleSize(options.doubleSize == 2);
+if (options.spaceWidth) {
+  var space = font.glyphs[32];
+  space.width = options.spaceWidth;
+  space.xEnd = options.spaceWidth-1;
+  space.advance = options.spaceWidth;
+}
+
 if (options.debug) {
   font.debugChars();
   font.debugPixelsUsed();
@@ -91,6 +107,8 @@ if (options.oh)
   require("fs").writeFileSync(options.oh, Buffer.from(font.getHeaderFile()))
 if (options.opbf)
   require("fs").writeFileSync(options.opbf, Buffer.from(font.getPBF()))
+if (options.opbff)
+  require("fs").writeFileSync(options.opbff, Buffer.from(font.getPBFF()))
 if (options.opbfc)
   font.getPBFAsC({
     name:options.opbfc,
