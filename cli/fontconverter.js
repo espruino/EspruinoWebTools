@@ -25,9 +25,10 @@ cli/fontconverter.js sourceFile
        --shiftUp #  - shift all font glyphs up by the given amount
        --nudge      - automatically shift glyphs up or down to fit in the given font height
        --doubleSize - double the size of this font using a pixel doubling algorithm
-       --doubleSize2 - double the size of this font using a smooth pixel doubling algorithm
+       --doubleSize2  double the size of this font using a smooth pixel doubling algorithm
        --spaceWidth #
                     - set the size (in pixels) of the space(32) character
+       --test "str" - Render the given string in the current font and print it to the console
 
        --ojs fn.js   - save the font as JS - only works for <1000 chars
        --oh  fn.h    - save the font as a C header file (uses data for each char including blank ones)
@@ -61,6 +62,8 @@ Input font can be:
     options.doubleSize = 2;
   } else if (arg=="--spaceWidth") {
     options.spaceWidth = parseInt(process.argv[++i]);
+  } else if (arg=="--test") {
+    options.test = process.argv[++i];
   } else if (arg=="--ojs") {
     options.ojs = process.argv[++i];
   } else if (arg=="--oh") {
@@ -92,6 +95,7 @@ if (options.doubleSize)
   font.doubleSize(options.doubleSize == 2);
 if (options.spaceWidth) {
   var space = font.glyphs[32];
+  if (!space) space = font.glyphs[32] = font.getGlyph(32, (x,y) => 0)
   space.width = options.spaceWidth;
   space.xEnd = options.spaceWidth-1;
   space.advance = options.spaceWidth;
@@ -101,6 +105,8 @@ if (options.debug) {
   font.debugChars();
   font.debugPixelsUsed();
 }
+if (options.test)
+  font.printString(options.test);
 if (options.ojs)
   require("fs").writeFileSync(options.ojs, Buffer.from(font.getJS()))
 if (options.oh)

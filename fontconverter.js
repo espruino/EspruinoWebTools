@@ -1033,7 +1033,6 @@ Font.prototype.renderString = function(text) {
         c |= c>>bpp;
         c |= c>>(bpp*2);
         c |= c>>(bpp*4);
-        c = 255-c;
         var px = x+ox;
         if ((px>=0) && (px < width) && (y>=0) && (y<this.height))
           bmp[px + (y*width)] = 0xFF000000 | (c<<16) | (c<<8) | c;
@@ -1044,6 +1043,21 @@ Font.prototype.renderString = function(text) {
   // return
   return {width : width, height : this.height, bpp : 32, data : bmp };
 };
+
+// Render the given text and output it to the console
+Font.prototype.printString = function(text) {
+  var img = this.renderString(text);
+  console.log("-".repeat(img.width));
+  for (var y=0;y<img.height;y++) {
+    var l = "";
+    for (var x=0;x<img.width;x++) {
+      var c = (img.data[x + (y*img.width)]&255) >> 6;
+      l += "░▒▓█"[c];
+    }
+    console.log(l);
+  }
+  console.log("-".repeat(img.width));
+}
 
 /* Outputs an object containing suggested sets of characters, with the following fields:
 {
