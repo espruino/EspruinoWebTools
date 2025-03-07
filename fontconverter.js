@@ -404,6 +404,8 @@ function loadPBFF(fontInfo) {
     } else if (l.startsWith("line-height")) {
       if (!fontInfo.fmHeight) // if no height specified
         fontInfo.fmHeight = 0|l.split(" ")[1];
+      if (!fontInfo.height) // if no height specified
+        fontInfo.height = 0|l.split(" ")[1];
     } else if (l.startsWith("glyph")) {
       current = {};
       current.idx = parseInt(l.trim().split(" ")[1]);
@@ -421,10 +423,10 @@ function loadPBFF(fontInfo) {
       current.bmp.push(l);
       if (l.length > fontInfo.fmWidth) fontInfo.fmWidth = l.length;
       if (current.bmp.length > fontInfo.fmHeight) {
-        console.log(current.idx+" bump height to "+current.bmp.length);
+        console.log("Char "+current.idx+" bump height to "+current.bmp.length);
         fontInfo.fmHeight = current.bmp.length;
       }
-    } else if (l!="" && !l.startsWith("#")) console.log(`Unknown line '${l}'`);
+    } else if (l!="" && !l.startsWith("//")) console.log(`Unknown line '${l}'`);
   });
 
   fontInfo.generateGlyphs(function(ch,x,y) {

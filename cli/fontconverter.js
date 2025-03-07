@@ -63,7 +63,8 @@ Input font can be:
   } else if (arg=="--spaceWidth") {
     options.spaceWidth = parseInt(process.argv[++i]);
   } else if (arg=="--test") {
-    options.test = process.argv[++i];
+    if (!options.tests) options.tests=[];
+    options.tests.push(process.argv[++i]);
   } else if (arg=="--ojs") {
     options.ojs = process.argv[++i];
   } else if (arg=="--oh") {
@@ -105,8 +106,8 @@ if (options.debug) {
   font.debugChars();
   font.debugPixelsUsed();
 }
-if (options.test)
-  font.printString(options.test);
+if (options.tests)
+  options.tests.forEach(test => font.printString(test));
 if (options.ojs)
   require("fs").writeFileSync(options.ojs, Buffer.from(font.getJS()))
 if (options.oh)
