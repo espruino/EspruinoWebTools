@@ -91,6 +91,7 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.10: Add configurable timeouts
 1.09: UART.write/eval now wait until they have received data with a newline in (if requested)
        and return the LAST received line, rather than the first (as before)
 1.08: Add UART.getConnectionAsync()
@@ -1095,15 +1096,16 @@ To do:
           };
         }
         // wait for any received data if we have a callback...
-        var maxTime = 300; // 30 sec - Max time we wait in total, even if getting data
-        var dataWaitTime = callbackNewline ? 100/*10 sec  if waiting for newline*/ : 3/*300ms*/;
+        var maxTime = uart.timeoutMax; // Max time we wait in total, even if getting data
+        var dataWaitTime = callbackNewline ? uart.timeoutNewline : uart.timeoutNormal;
         var maxDataTime = dataWaitTime; // max time we wait after having received data
+        const POLLINTERVAL = 100;
         cbTimeout = setTimeout(function timeout() {
           cbTimeout = undefined;
-          if (maxTime) maxTime--;
-          if (maxDataTime) maxDataTime--;
+          if (maxTime>0) maxTime-=POLLINTERVAL;
+          if (maxDataTime>0) maxDataTime-=POLLINTERVAL;
           if (connection.hadData) maxDataTime=dataWaitTime;
-          if (maxDataTime && maxTime) {
+          if (maxDataTime>0 && maxTime>0) {
             cbTimeout = setTimeout(timeout, 100);
           } else {
             connection.cb = undefined;
@@ -1154,7 +1156,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.09",
+    version : "1.10",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
@@ -1163,6 +1165,12 @@ To do:
     ports : ["Web Bluetooth","Web Serial"],
     /// Baud rate for Web Serial connections (Official Espruino devices use 9600, Espruino-on-ESP32/etc use 115200)
     baud : 115200,
+    /// timeout (in ms) in .write when waiting for any data to return
+    timeoutNormal : 300,
+    /// timeout (in ms) in .write/.eval when waiting for a newline
+    timeoutNewline : 10000,
+    /// timeout (in ms) to wait at most
+    timeoutMax : 30000,
     /// Used internally to write log information - you can replace this with your own function
     log : function(level, s) { if (level <= this.debug) console.log("<UART> "+s)},
     /// Called with the current send progress or undefined when done - you can replace this with your own function
