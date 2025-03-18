@@ -91,6 +91,8 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.09: UART.write/eval now wait until they have received data with a newline in (if requested)
+       and return the LAST received line, rather than the first (as before)
 1.08: Add UART.getConnectionAsync()
       Add .espruinoEval(... {stmFix:true}) to work around occasional STM32 USB issue in 2v24 and earlier firmwares
       1s->2s packet timeout
@@ -570,7 +572,7 @@ To do:
             cleanup();
             reject("espruinoReceiveFile Timeout");
           }, options.timeout || 1000);
-        } 
+        }
         function cleanup() {
           connection.removeListener("packet", onPacket);
           if (timeout) {
@@ -642,7 +644,7 @@ To do:
               .catch(err=>{
                 console.error("Error sending STM fix:",err);
                 cleanup();
-              }); 
+              });
             }, 50);
         }, err => {
           cleanup();
@@ -1072,19 +1074,24 @@ To do:
       function onWritten() {
         if (callbackNewline) {
           connection.cb = function(d) {
-            var newLineIdx = connection.received.indexOf("\n");
-            if (newLineIdx>=0) {
-              var l = connection.received.substr(0,newLineIdx);
-              connection.received = connection.received.substr(newLineIdx+1);
-              connection.cb = undefined;
-              if (cbTimeout) clearTimeout(cbTimeout);
-              cbTimeout = undefined;
-              if (callback)
-                callback(l);
-              resolve(l);
-              isBusy = false;
-              handleQueue();
-            }
+            // if we hadn't got a newline this time (even if we had one before)
+            // then ignore it (https://github.com/espruino/BangleApps/issues/3771)
+            if (!d.includes("\n")) return;
+            // now return the LAST received non-empty line
+            var lines = connection.received.split("\n");
+            var idx = lines.length-1;
+            while (lines[idx].trim().length==0 && idx>0) idx--; // skip over empty lines
+            var line = lines.splice(idx,1)[0]; // get the non-empty line
+            connection.received = lines.join("\n"); // put back other lines
+            // remove handler and return
+            connection.cb = undefined;
+            if (cbTimeout) clearTimeout(cbTimeout);
+            cbTimeout = undefined;
+            if (callback)
+              callback(line);
+            resolve(l);
+            isBusy = false;
+            handleQueue();
           };
         }
         // wait for any received data if we have a callback...
@@ -1147,7 +1154,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.08",
+    version : "1.09",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true

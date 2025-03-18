@@ -51,9 +51,12 @@ Or more advanced usage with control of the connection
 ChangeLog:
 
 ...
-1v00 : Added Promises to write/eval
-1v01 : Raise default Chunk Size to 20
-       Auto-adjust chunk size up if we receive >20 bytes in a packet
+1.02: Puck.write/eval now wait until they have received data with a newline in (if requested)
+      and return the LAST received line, rather than the first (as before)
+      Added configurable timeouts for write/etc
+1.01: Raise default Chunk Size to 20
+      Auto-adjust chunk size up if we receive >20 bytes in a packet
+1.00: Added Promises to write/eval
 
 */
 (function (root, factory) {
@@ -328,31 +331,37 @@ ChangeLog:
     function onWritten() {
       if (callbackNewline) {
         connection.cb = function(d) {
-          var newLineIdx = connection.received.indexOf("\n");
-          if (newLineIdx>=0) {
-            var l = connection.received.substr(0,newLineIdx);
-            connection.received = connection.received.substr(newLineIdx+1);
-            connection.cb = undefined;
-            if (cbTimeout) clearTimeout(cbTimeout);
-            cbTimeout = undefined;
-            if (callback)
-              callback(l);
-            isBusy = false;
-            handleQueue();
-          }
+          // if we hadn't got a newline this time (even if we had one before)
+          // then ignore it (https://github.com/espruino/BangleApps/issues/3771)
+          if (!d.includes("\n")) return;
+          // now return the LAST received non-empty line
+          var lines = connection.received.split("\n");
+          var idx = lines.length-1;
+          while (lines[idx].trim().length==0 && idx>0) idx--; // skip over empty lines
+          var line = lines.splice(idx,1)[0]; // get the non-empty line
+          connection.received = lines.join("\n"); // put back other lines
+          // remove handler and return
+          connection.cb = undefined;
+          if (cbTimeout) clearTimeout(cbTimeout);
+          cbTimeout = undefined;
+          if (callback)
+            callback(line);
+          isBusy = false;
+          handleQueue();
         };
       }
       // wait for any received data if we have a callback...
-      var maxTime = 300; // 30 sec - Max time we wait in total, even if getting data
-      var dataWaitTime = callbackNewline ? 100/*10 sec if waiting for newline*/ : 3/*300ms*/;
+      var maxTime = puck.timeoutMax; // Max time we wait in total, even if getting data
+      var dataWaitTime = callbackNewline ? puck.timeoutNewline : puck.timeoutNormal;
       var maxDataTime = dataWaitTime; // max time we wait after having received data
+      const POLLINTERVAL = 100;
       cbTimeout = setTimeout(function timeout() {
         cbTimeout = undefined;
-        if (maxTime) maxTime--;
-        if (maxDataTime) maxDataTime--;
+        if (maxTime>0) maxTime-=POLLINTERVAL;
+        if (maxDataTime>0) maxDataTime-=POLLINTERVAL;
         if (connection.hadData) maxDataTime=dataWaitTime;
-        if (maxDataTime && maxTime) {
-          cbTimeout = setTimeout(timeout, 100);
+        if (maxDataTime>0 && maxTime>0) {
+          cbTimeout = setTimeout(timeout, POLLINTERVAL);
         } else {
           connection.cb = undefined;
           if (callback)
@@ -362,7 +371,7 @@ ChangeLog:
           connection.received = "";
         }
         connection.hadData = false;
-      }, 100);
+      }, POLLINTERVAL);
     }
 
     if (connection && (connection.isOpen || connection.isOpening)) {
@@ -397,6 +406,7 @@ ChangeLog:
   // ----------------------------------------------------------
 
   var puck = {
+    version : "1.02",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /** When we receive more than 20 bytes, should we increase the chunk size we use
@@ -405,6 +415,12 @@ ChangeLog:
     increaseMTU : true,
     /// Should we use flow control? Default is true
     flowControl : true,
+    /// timeout (in ms) in .write when waiting for any data to return
+    timeoutNormal : 300,
+    /// timeout (in ms) in .write/.eval when waiting for a newline
+    timeoutNewline : 10000,
+    /// timeout (in ms) to wait at most
+    timeoutMax : 30000,
     /// Used internally to write log information - you can replace this with your own function
     log : function(level, s) { if (level <= this.debug) console.log("<BLE> "+s)},
     /// Called with the current send progress or undefined when done - you can replace this with your own function
@@ -418,7 +434,6 @@ ChangeLog:
     write : write,
     /// Evaluate an expression and call cb with the result. Creates a connection if it doesn't exist
     eval : function(expr, cb) {
-
       const response = write('\x10Bluetooth.println(JSON.stringify(' + expr + '))\n', true)
         .then(function (d) {
           try {
@@ -428,8 +443,6 @@ ChangeLog:
             return Promise.reject(d);
           }
         });
-
-
       if (cb) {
         return void response.then(cb, (err) => cb(null, err));
       } else {
