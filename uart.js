@@ -1089,7 +1089,7 @@ To do:
             cbTimeout = undefined;
             if (callback)
               callback(line);
-            resolve(l);
+            resolve(line);
             isBusy = false;
             handleQueue();
           };
