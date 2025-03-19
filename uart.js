@@ -91,6 +91,11 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.11: espruinoSendPacket now has a timeout (never timed out before)
+      UART.writeProgress callback now correctly handles progress when sending a big file
+      UART.writeProgress will now work in Web Serial when using espruinoSendFile
+      espruinoReadfile has an optional progress callback
+      Added UART.increaseMTU option for Web Bluetooth like Puck.js lib
 1.10: Add configurable timeouts
 1.09: UART.write/eval now wait until they have received data with a newline in (if requested)
        and return the LAST received line, rather than the first (as before)
@@ -402,7 +407,18 @@ To do:
     rxDataHandlerLastCh = 0; // used by rxDataHandler - last received character
     rxDataHandlerPacket = undefined; // used by rxDataHandler - used for parsing
     rxDataHandlerTimeout = undefined; // timeout for unfinished packet
-    rxDataHandler(data) { // Called when data is received, and passed it on to event listeners
+    progressAmt = 0;      // When sending a file, how many bytes through are we?
+    progressMax = 0;      // When sending a file, how long is it in bytes? 0 if not sending a file
+    /// Called when sending data, and we take this (along with progressAmt/progressMax) and create a more detailed progress report
+    updateProgress(chars, charsMax) {
+      if (chars===undefined) return uart.writeProgress();
+      if (this.progressMax)
+        uart.writeProgress(this.progressAmt+chars, this.progressMax);
+      else
+      uart.writeProgress(chars, charsMax);
+    };
+    /// Called when data is received, and passed it on to event listeners
+    rxDataHandler(data) {
       log(3, "Received "+JSON.stringify(data));
       // TODO: handle XON/XOFF centrally here?
       if (this.parsePackets) {
@@ -465,11 +481,13 @@ To do:
 
     /* Send a packet of type "RESPONSE/EVAL/EVENT/FILE_SEND/DATA" to Espruino
        options = {
-         noACK : bool (don't wait to acknowledgement)
+         noACK : bool (don't wait to acknowledgement - default=false)
+         timeout : int (optional, milliseconds, default=5000) if noACK=false
        }
     */
     espruinoSendPacket(pkType, data, options) {
       options = options || {};
+      if (!options.timeout) options.timeout=5000;
       if ("string"!=typeof data) throw new Error("'data' must be a String");
       if (data.length>0x1FFF) throw new Error("'data' too long");
       const PKTYPES = {
@@ -483,7 +501,12 @@ To do:
       if (!pkType in PKTYPES) throw new Error("'pkType' not one of "+Object.keys(PKTYPES));
       let connection = this;
       return new Promise((resolve,reject) => {
+        let timeout;
         function tidy() {
+          if (timeout) {
+            clearTimeout(timeout);
+            timeout = undefined;
+          }
           connection.removeListener("ack",onACK);
           connection.removeListener("nak",onNAK);
         }
@@ -493,7 +516,7 @@ To do:
         }
         function onNAK(ok) {
           tidy();
-          setTimeout(reject,0);
+          setTimeout(reject,0,"NAK while sending packet");
         }
         if (!options.noACK) {
           connection.parsePackets = true;
@@ -505,6 +528,12 @@ To do:
           // write complete
           if (options.noACK) {
             setTimeout(resolve,0); // if not listening for acks, just resolve immediately
+          } else {
+            timeout = setTimeout(function() {
+              timeout = undefined;
+              tidy();
+              reject(`Timeout (${options.timeout}ms) while sending packet`);
+            }, options.timeout);
           }
         }, err => {
           tidy();
@@ -542,27 +571,45 @@ To do:
       }
       let connection = this;
       let packetCount = 0, packetTotal = Math.ceil(data.length/CHUNK)+1;
+      connection.progressAmt = 0;
+      connection.progressMax = data.length;
       // always ack the FILE_SEND
       progressHandler(0, packetTotal);
-      return connection.espruinoSendPacket("FILE_SEND",JSON.stringify(options)).then(sendData);
+      return connection.espruinoSendPacket("FILE_SEND",JSON.stringify(options)).then(sendData, err=> {
+        connection.progressAmt = 0;
+        connection.progressMax = 0;
+        throw err;
+      });
       // but if noACK don't ack for data
       function sendData() {
+        connection.progressAmt += CHUNK;
         progressHandler(++packetCount, packetTotal);
-        if (data.length==0) return Promise.resolve();
+        if (data.length==0) {
+          connection.progressAmt = 0;
+          connection.progressMax = 0;
+          return Promise.resolve();
+        }
         let packet = data.substring(0, CHUNK);
         data = data.substring(CHUNK);
-        return connection.espruinoSendPacket("DATA", packet, packetOptions).then(sendData);
+        return connection.espruinoSendPacket("DATA", packet, packetOptions).then(sendData, err=> {
+          connection.progressAmt = 0;
+          connection.progressMax = 0;
+          throw err;
+        });
       }
     }
     /* Receive a file from Espruino using 2v25 packets.
        options = { // mainly passed to Espruino
          fs : true // optional -> write using require("fs") (to SD card)
          timeout : int // milliseconds timeout (default=1000)
+         progress : (bytes)=>{} // callback to report upload progress
        }
    } */
     espruinoReceiveFile(filename, options) {
       options = options||{};
       options.fn = filename;
+      if (!options.progress)
+        options.progress =  (bytes)=>{};
       let connection = this;
       return new Promise((resolve,reject) => {
         let fileContents = "", timeout;
@@ -588,12 +635,14 @@ To do:
             setTimeout(resolve,0,fileContents);
           } else {
             fileContents += data;
+            options.progress(fileContents.length);
             scheduleTimeout();
           }
         }
         connection.parsePackets = true;
         connection.on("packet", onPacket);
         scheduleTimeout();
+        options.progress(0);
         connection.espruinoSendPacket("FILE_RECV",JSON.stringify(options)).then(()=>{
           // now wait...
         }, err => {
@@ -724,11 +773,11 @@ To do:
             }
             var chunk;
             if (!txDataQueue.length) {
-              uart.writeProgress();
+              connection.updateProgress();
               return;
             }
             var txItem = txDataQueue[0];
-            uart.writeProgress(txItem.maxLength - txItem.data.length, txItem.maxLength);
+            connection.updateProgress(txItem.maxLength - txItem.data.length, txItem.maxLength);
             if (txItem.data.length <= chunkSize) {
               chunk = txItem.data;
               txItem.data = undefined;
@@ -781,7 +830,7 @@ To do:
         log(2, "RX characteristic:"+JSON.stringify(rxCharacteristic));
         rxCharacteristic.addEventListener('characteristicvaluechanged', function(event) {
           var dataview = event.target.value;
-          if (dataview.byteLength > chunkSize) {
+          if (uart.increaseMTU && (dataview.byteLength > chunkSize)) {
             log(2, "Received packet of length "+dataview.byteLength+", increasing chunk size");
             chunkSize = dataview.byteLength;
           }
@@ -862,7 +911,6 @@ To do:
         // readLoop will finish and *that* calls disconnect and cleans up
       };
       connection.write = function(data, callback, alreadyRetried) {
-        // TODO: progress?
         return new Promise((resolve, reject) => {
           if (!serialPort || !serialPort.writable) return reject ("Not connected");
           if (serialPort.writable.locked) {
@@ -874,13 +922,16 @@ To do:
           }
           writer = serialPort.writable.getWriter();
           log(2, "Sending "+ JSON.stringify(data));
+          connection.updateProgress(0, data.length);
           writer.write(str2ab(data)).then(function() {
+            connection.updateProgress();
             writer.releaseLock();
             writer = undefined;
             log(3, "Sent");
             if (callback) callback();
             resolve();
           }).catch(function(error) {
+            connection.updateProgress();
             if (writer) {
               writer.releaseLock();
               writer.close();
@@ -1156,7 +1207,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.10",
+    version : "1.11",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
@@ -1171,6 +1222,9 @@ To do:
     timeoutNewline : 10000,
     /// timeout (in ms) to wait at most
     timeoutMax : 30000,
+    /** Web Bluetooth: When we receive more than 20 bytes, should we increase the chunk size we use
+    for writing to match it? Normally this is fine but it seems some phones have a broken bluetooth implementation that doesn't allow it. */
+    increaseMTU : true,
     /// Used internally to write log information - you can replace this with your own function
     log : function(level, s) { if (level <= this.debug) console.log("<UART> "+s)},
     /// Called with the current send progress or undefined when done - you can replace this with your own function
