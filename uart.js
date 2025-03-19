@@ -737,7 +737,7 @@ To do:
               txItem.data = txItem.data.substr(chunkSize);
             }
             connection.txInProgress = true;
-            log(2, "Sending "+ JSON.stringify(chunk));
+            log(2, "Sending "+ JSON.stringify(chunk.length>32?chunk.substr(0,32)+"...":chunk));
             txCharacteristic.writeValue(str2ab(chunk)).then(function() {
               log(3, "Sent");
               if (!txItem.data) {
