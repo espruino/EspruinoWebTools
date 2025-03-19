@@ -96,6 +96,8 @@ ChangeLog:
       UART.writeProgress will now work in Web Serial when using espruinoSendFile
       espruinoReadfile has an optional progress callback
       Added UART.increaseMTU option for Web Bluetooth like Puck.js lib
+      Added 'endpoint' field to the connection
+      Fix port chooser formatting when spectre.css has changed some defaults
 1.10: Add configurable timeouts
 1.09: UART.write/eval now wait until they have received data with a newline in (if requested)
        and return the LAST received line, rather than the first (as before)
@@ -388,6 +390,7 @@ To do:
 
   /// Base connection class - BLE/Serial add their write/etc on top of this
   class Connection {
+    endpoint = undefined; // Set to the endpoint used for this connection - eg maybe endpoint.name=="Web Bluetooth"
     // on/emit work for close/data/open/error/ack/nak/packet events
     on(evt,cb) { let e = "on"+evt; if (!this[e]) this[e]=[]; this[e].push(cb); }; // on only works with a single handler
     emit(evt,data1,data2) { let e = "on"+evt;  if (this[e]) this[e].forEach(fn=>fn(data1,data2)); };
@@ -1070,11 +1073,12 @@ To do:
         if (supported!==true)
           log(0, endpoint.name+" not supported, "+supported);
         var ep = document.createElement('div');
-        ep.style = 'width:300px;height:60px;background:#ccc;margin:4px 0px 4px 0px;padding:0px 0px 0px 68px;cursor:pointer;';
-        ep.innerHTML = '<div style="position:absolute;left:8px;width:48px;height:48px;background:#999;padding:6px;cursor:pointer;">'+endpoint.svg+'</div>'+
+        ep.style = 'width:300px;height:60px;background:#ccc;margin:4px 0px 4px 0px;padding:0px 0px 0px 68px;cursor:pointer;line-height: normal;';
+        ep.innerHTML = '<div style="position:absolute;box-sizing:content-box;left:8px;width:48px;height:48px;background:#999;padding:6px;cursor:pointer;">'+endpoint.svg+'</div>'+
                       '<div style="font-size:150%;padding-top:8px;">'+endpoint.name+'</div>'+
                       '<div style="font-size:80%;color:#666">'+endpoint.description+'</div>';
         ep.onclick = function(evt) {
+          connection.endpoint = endpoint;
           endpoint.connect(connection, options).then(resolve, reject);
           evt.preventDefault();
           menu.remove();
