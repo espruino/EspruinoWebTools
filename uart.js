@@ -91,6 +91,7 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.12: Handle cases where platform doesn't support connection type better (reject with error message)
 1.11: espruinoSendPacket now has a timeout (never timed out before)
       UART.writeProgress callback now correctly handles progress when sending a big file
       UART.writeProgress will now work in Web Serial when using espruinoSendFile
@@ -1059,10 +1060,14 @@ To do:
         if (endpoint===undefined) {
           return reject(`UART: Port Named "${uart.ports[0]}" not found`);
         }
+        var supported = endpoint.isSupported();
+        if (supported!==true)
+          return reject(endpoint.name+" is not supported on this platform: "+supported);
         return endpoint.connect(connection, options).then(resolve, reject);
       }
 
       var items = document.createElement('div');
+      var supportedEndpoints = 0;
       uart.ports.forEach(function(portName) {
         var endpoint = endpoints.find(ep => ep.name == portName);
         if (endpoint===undefined) {
@@ -1070,8 +1075,10 @@ To do:
           return;
         }
         var supported = endpoint.isSupported();
-        if (supported!==true)
+        if (supported!==true) {
           log(0, endpoint.name+" not supported, "+supported);
+          return;
+        }
         var ep = document.createElement('div');
         ep.style = 'width:300px;height:60px;background:#ccc;margin:4px 0px 4px 0px;padding:0px 0px 0px 68px;cursor:pointer;line-height: normal;';
         ep.innerHTML = '<div style="position:absolute;box-sizing:content-box;left:8px;width:48px;height:48px;background:#999;padding:6px;cursor:pointer;">'+endpoint.svg+'</div>'+
@@ -1084,7 +1091,11 @@ To do:
           menu.remove();
         };
         items.appendChild(ep);
+        supportedEndpoints++;
       });
+      if (supportedEndpoints==0)
+        return reject(`No connection methods (${uart.ports.join(", ")}) supported on this platform`);
+
       var menu = createModal({
         title:"SELECT A PORT...",
         contents:items,
@@ -1096,17 +1107,7 @@ To do:
       });
     });
   }
-  function checkIfSupported() {
-    var anySupported = false;
-    endpoints.forEach(function(endpoint) {
-      var supported = endpoint.isSupported();
-      if (supported===true)
-        anySupported = true;
-      else
-        log(0, endpoint.name+" not supported, "+supported);
-    });
-    return anySupported;
-  }
+
   // Push the given operation to the queue, return a promise
   function pushToQueue(operation) {
     log(3, `Busy - adding ${operation.type} to queue`);
@@ -1121,7 +1122,6 @@ To do:
        callbackNewline = false => if no new data received for ~0.2 sec
        callbackNewline = true => after a newline */
   function write(data, callback, callbackNewline) {
-    if (!checkIfSupported()) return;
     if (isBusy)
       return pushToQueue({type:"write", data:data, callback:callback, callbackNewline:callbackNewline});
 
@@ -1185,13 +1185,14 @@ To do:
 
       return connect().then(function(connection) {
         isBusy = true;
-        connection.write(data, onWritten);
+        connection.write(data, onWritten/*calls resolve*/);
+      }, function(error) {
+        reject(error);
       });
     });
   }
 
   function evaluate(expr, cb) {
-    if (!checkIfSupported()) return;
     if (isBusy)
       return pushToQueue({type:"eval", expr:expr, cb:cb});
     return write('\x10eval(process.env.CONSOLE).println(JSON.stringify('+expr+'))\n').then(function(d) {
@@ -1211,7 +1212,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.11",
+    version : "1.12",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
