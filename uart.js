@@ -91,6 +91,7 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.13: Ensure UART.eval waits for a newline for the result like the Puck.js lib (rather than just returning whatever there was)
 1.12: Handle cases where platform doesn't support connection type better (reject with error message)
 1.11: espruinoSendPacket now has a timeout (never timed out before)
       UART.writeProgress callback now correctly handles progress when sending a big file
@@ -1195,7 +1196,7 @@ To do:
   function evaluate(expr, cb) {
     if (isBusy)
       return pushToQueue({type:"eval", expr:expr, cb:cb});
-    return write('\x10eval(process.env.CONSOLE).println(JSON.stringify('+expr+'))\n').then(function(d) {
+    return write('\x10eval(process.env.CONSOLE).println(JSON.stringify('+expr+'))\n',undefined,true/*callback on newline*/).then(function(d) {
       try {
         var json = JSON.parse(d.trim());
         if (cb) cb(json);
@@ -1212,7 +1213,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.12",
+    version : "1.13",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
