@@ -94,6 +94,7 @@ ChangeLog:
 1.14: Ignore 'backspace' character when searching for newlines
       Remove fs/noACK from espruinoSendFile if not needed
       Longer log messages
+      Increase default delay to 450ms (to cope with devices in low speed 200ms connection interval mode reliably)
 1.13: Ensure UART.eval waits for a newline for the result like the Puck.js lib (rather than just returning whatever there was)
 1.12: Handle cases where platform doesn't support connection type better (reject with error message)
 1.11: espruinoSendPacket now has a timeout (never timed out before)
@@ -1228,7 +1229,7 @@ To do:
     /// Baud rate for Web Serial connections (Official Espruino devices use 9600, Espruino-on-ESP32/etc use 115200)
     baud : 115200,
     /// timeout (in ms) in .write when waiting for any data to return
-    timeoutNormal : 300,
+    timeoutNormal : 450, // 450ms is enough time that with a slower 200ms connection interval and a delay we should be ok
     /// timeout (in ms) in .write/.eval when waiting for a newline
     timeoutNewline : 10000,
     /// timeout (in ms) to wait at most
