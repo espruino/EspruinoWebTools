@@ -91,6 +91,9 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.14: Ignore 'backspace' character when searching for newlines
+      Remove fs/noACK from espruinoSendFile if not needed
+      Longer log messages
 1.13: Ensure UART.eval waits for a newline for the result like the Puck.js lib (rather than just returning whatever there was)
 1.12: Handle cases where platform doesn't support connection type better (reject with error message)
 1.11: espruinoSendPacket now has a timeout (never timed out before)
@@ -562,9 +565,9 @@ To do:
       options.s = data.length;
       let packetOptions = {};
       let progressHandler =  (chunkNo,chunkCount)=>{};
-      if (options.noACK) {
+      if (options.noACK !== undefined) {
+        packetOptions.noACK = !!options.noACK;
         delete options.noACK;
-        packetOptions.noACK = true;
       }
       if (options.chunkSize) {
         CHUNK = options.chunkSize;
@@ -574,6 +577,8 @@ To do:
         progressHandler = options.progress;
         delete options.progress;
       }
+      options.fs = options.fs?1:0; // .fs => use SD card
+      if (!options.fs) delete options.fs; // default=0, so just remove if it's not set
       let connection = this;
       let packetCount = 0, packetTotal = Math.ceil(data.length/CHUNK)+1;
       connection.progressAmt = 0;
@@ -791,7 +796,7 @@ To do:
               txItem.data = txItem.data.substr(chunkSize);
             }
             connection.txInProgress = true;
-            log(2, "Sending "+ JSON.stringify(chunk.length>32?chunk.substr(0,32)+"...":chunk));
+            log(2, "Sending "+ JSON.stringify(chunk.length>80?chunk.substr(0,80)+"...":chunk));
             txCharacteristic.writeValue(str2ab(chunk)).then(function() {
               log(3, "Sent");
               if (!txItem.data) {
@@ -1137,7 +1142,7 @@ To do:
             // now return the LAST received non-empty line
             var lines = connection.received.split("\n");
             var idx = lines.length-1;
-            while (lines[idx].trim().length==0 && idx>0) idx--; // skip over empty lines
+            while (lines[idx].replaceAll("\b","").trim().length==0 && idx>0) idx--; // skip over empty lines (incl backspace \b)
             var line = lines.splice(idx,1)[0]; // get the non-empty line
             connection.received = lines.join("\n"); // put back other lines
             // remove handler and return
@@ -1213,7 +1218,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.13",
+    version : "1.14",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
