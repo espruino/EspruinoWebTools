@@ -507,7 +507,7 @@ To do:
         DATA : 0x8000, // Sent after FILE_SEND with blocks of data for the file
         FILE_RECV : 0xA000 // receive a file - returns a series of PT_TYPE_DATA packets, with a final zero length packet to end
       }
-      if (!pkType in PKTYPES) throw new Error("'pkType' not one of "+Object.keys(PKTYPES));
+      if (!(pkType in PKTYPES)) throw new Error("'pkType' not one of "+Object.keys(PKTYPES));
       let connection = this;
       return new Promise((resolve,reject) => {
         let timeout;
