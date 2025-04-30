@@ -16,6 +16,7 @@
     "pngjs": "^7.0.0"
   },
   "devDependencies": {
+    "@babel/eslint-parser": "^7.27.0",
     "@types/node": "^22.14.1",
     "eslint": "^8.57.1",
     "typescript": "^5.8.3"

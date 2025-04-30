@@ -139,18 +139,19 @@ To do:
 
 */
 (function (root, factory) {
-    if (typeof define === 'function' && define.amd) {
-        // AMD. Register as an anonymous module.
-        define([], factory);
-    } else if (typeof module === 'object' && module.exports) {
-        // Node. Does not work with strict CommonJS, but
-        // only CommonJS-like environments that support module.exports,
-        // like Node.
-        module.exports = factory();
-    } else {
-        // Browser globals (root is window)
-        root.UART = factory();
-    }
+  /* global define */
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module.
+    define([], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like environments that support module.exports,
+    // like Node.
+    module.exports = factory();
+  } else {
+    // Browser globals (root is window)
+    root.UART = factory();
+  }
 }(typeof self !== 'undefined' ? self : this, function () {
 
   const NORDIC_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
@@ -275,7 +276,6 @@ To do:
               if (ch=="\\") { // handle escape characters
                 nextCh();
                 var escape = '\\'+ch;
-                var escapeExtra = 0;
                 if (ch=="x") {
                   nextCh();escape += ch;
                   nextCh();escape += ch;
@@ -299,7 +299,7 @@ To do:
                 value += ch;
               }
               nextCh();
-            };
+            }
             if (ch!==undefined) s+=ch;
             nextCh();
           }
@@ -323,7 +323,6 @@ To do:
     }
 
     function recurse() {
-      let final = "";
       while (tok!==undefined) {
         if (tok.type == "NUMBER") {
           let v = parseFloat(tok.str);
@@ -399,9 +398,9 @@ To do:
   class Connection {
     endpoint = undefined; // Set to the endpoint used for this connection - eg maybe endpoint.name=="Web Bluetooth"
     // on/emit work for close/data/open/error/ack/nak/packet events
-    on(evt,cb) { let e = "on"+evt; if (!this[e]) this[e]=[]; this[e].push(cb); }; // on only works with a single handler
-    emit(evt,data1,data2) { let e = "on"+evt;  if (this[e]) this[e].forEach(fn=>fn(data1,data2)); };
-    removeListener(evt,callback) { let e = "on"+evt;  if (this[e]) this[e]=this[e].filter(fn=>fn!=callback); };
+    on(evt,cb) { let e = "on"+evt; if (!this[e]) this[e]=[]; this[e].push(cb); } // on only works with a single handler
+    emit(evt,data1,data2) { let e = "on"+evt;  if (this[e]) this[e].forEach(fn=>fn(data1,data2)); }
+    removeListener(evt,callback) { let e = "on"+evt;  if (this[e]) this[e]=this[e].filter(fn=>fn!=callback); }
     // on("open", () => ... ) connection opened
     // on("close", () => ... ) connection closed
     // on("data", (data) => ... ) when data is received (as string)
@@ -432,7 +431,7 @@ To do:
         uart.writeProgress(this.progressAmt+chars, this.progressMax);
       else
       uart.writeProgress(chars, charsMax);
-    };
+    }
 
     /** Called when characters are received. This processes them and passes them on to event listeners */
     rxDataHandler(data) {
@@ -558,7 +557,7 @@ To do:
           });
         }
       });
-    };
+    }
 
     /* Send a packet of type "RESPONSE/EVAL/EVENT/FILE_SEND/DATA" to Espruino
        options = {
@@ -785,7 +784,7 @@ To do:
         });
       });
     }
-  };
+  }
 
   /// Endpoints for each connection method
   var endpoints = [];
@@ -799,7 +798,7 @@ To do:
            navigator.userAgent.indexOf("Chrome/55")>=0 ||
            navigator.userAgent.indexOf("Chrome/56")>=0)
           )
-        return "Chrome <56 in Windows has navigator.bluetooth but it's not implemented properly";;
+        return "Chrome <56 in Windows has navigator.bluetooth but it's not implemented properly";
       if (window && window.location && window.location.protocol=="http:" &&
           window.location.hostname!="localhost")
         return "Serving off HTTP (not HTTPS) - Web Bluetooth not enabled";
@@ -819,7 +818,6 @@ To do:
        */
       var btServer = undefined;
       var btService;
-      var connectionDisconnectCallback;
       var txCharacteristic;
       var rxCharacteristic;
 
@@ -1221,7 +1219,7 @@ To do:
         return Promise.reject(err);
       }
     }, true/*callbackNewline*/);
-  };
+  }
 
   // ----------------------------------------------------------
 
