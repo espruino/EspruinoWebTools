@@ -91,6 +91,8 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.15: Flow control and chunking moved to Connection class
+      XON/XOFF flow control now works on Serial
 1.14: Ignore 'backspace' character when searching for newlines
       Remove fs/noACK from espruinoSendFile if not needed
       Longer log messages
@@ -134,7 +136,6 @@ To do:
 
 * move 'connection.received' handling into removeListener and add an upper limit (100k?)
 * add a 'line' event for each line of data that's received
-* move XON/XOFF handling into Connection.rxDataHandler
 
 */
 (function (root, factory) {
@@ -407,17 +408,23 @@ To do:
     // on("packet", (type,data) => ... ) when a packet is received (if .parsePackets=true)
     // on("ack", () => ... ) when an ACK is received (if .parsePackets=true)
     // on("nak", () => ... ) when an ACK is received (if .parsePackets=true)
+    // writeLowLevel(data)=>Promise to be provided by implementor
+    // close() to be provided by implementor
     isOpen = false;       // is the connection actually open?
     isOpening = true;     // in the process of opening a connection?
     txInProgress = false; // is transmission in progress?
+    txDataQueue = [];     // queue of {data,callback,maxLength,resolve}
+    chunkSize = 20;       // Default size of chunks to split transmits into (BLE = 20, Serial doesn't care)
     parsePackets = false; // If set we parse the input stream for Espruino packet data transfers
     received = "";        // The data we've received so far - this gets reset by .write/eval/etc
     hadData = false;      // used when waiting for a block of data to finish being received
+    flowControlWait = 0;  // If this is nonzero, we should hold off sending for that number of milliseconds (wait and decrement each time)
     rxDataHandlerLastCh = 0; // used by rxDataHandler - last received character
     rxDataHandlerPacket = undefined; // used by rxDataHandler - used for parsing
     rxDataHandlerTimeout = undefined; // timeout for unfinished packet
     progressAmt = 0;      // When sending a file, how many bytes through are we?
     progressMax = 0;      // When sending a file, how long is it in bytes? 0 if not sending a file
+
     /// Called when sending data, and we take this (along with progressAmt/progressMax) and create a more detailed progress report
     updateProgress(chars, charsMax) {
       if (chars===undefined) return uart.writeProgress();
@@ -426,10 +433,12 @@ To do:
       else
       uart.writeProgress(chars, charsMax);
     };
-    /// Called when data is received, and passed it on to event listeners
+
+    /** Called when characters are received. This processes them and passes them on to event listeners */
     rxDataHandler(data) {
+      if (!(data instanceof ArrayBuffer)) console.warn("Serial port implementation is not returning ArrayBuffers");
+      data = ab2str(data); // now a string!
       log(3, "Received "+JSON.stringify(data));
-      // TODO: handle XON/XOFF centrally here?
       if (this.parsePackets) {
         for (var i=0;i<data.length;i++) {
           let ch = data[i];
@@ -457,6 +466,12 @@ To do:
             log(3, "Got NAK");
             this.emit("nak");
             ch = undefined;
+          } else if (uart.flowControl && ch=="\x11") { // 17 -> XON
+            log(2,"XON received => resume upload");
+            this.flowControlWait = 0;
+          } else if (uart.flowControl && ch=="\x13") { // 19 -> XOFF
+            log(2,"XOFF received => pause upload (10s)");
+            this.flowControlWait = 10000;
           } else if (ch=="\x10") { // DLE - potential start of packet (ignore)
             this.rxDataHandlerLastCh = "\x10";
             ch = undefined;
@@ -487,6 +502,63 @@ To do:
         this.emit('data', data);
       }
     }
+
+    /** Call this to send data, this splits data, handles queuing and flow control, and calls writeLowLevel to actually write the data  */
+    write(data, callback) {
+      let connection = this;
+      return new Promise((resolve,reject) => {
+        if (data) connection.txDataQueue.push({data:data,callback:callback,maxLength:data.length,resolve:resolve});
+        if (connection.isOpen && !connection.txInProgress) writeChunk();
+
+        function writeChunk() {
+          if (connection.flowControlWait) { // flow control - try again later
+            if (connection.flowControlWait>50) connection.flowControlWait-=50;
+            else {
+              log(2,"Flow Control timeout");
+              connection.flowControlWait=0;
+            }
+            setTimeout(writeChunk, 50);
+            return;
+          }
+          var chunk;
+          if (!connection.txDataQueue.length) {
+            uart.writeProgress();
+            connection.updateProgress();
+            return;
+          }
+          var txItem = connection.txDataQueue[0];
+          uart.writeProgress(txItem.maxLength - txItem.data.length, txItem.maxLength);
+          connection.updateProgress(txItem.maxLength - txItem.data.length, txItem.maxLength);
+          if (txItem.data.length <= connection.chunkSize) {
+            chunk = txItem.data;
+            txItem.data = undefined;
+          } else {
+            chunk = txItem.data.substr(0,connection.chunkSize);
+            txItem.data = txItem.data.substr(connection.chunkSize);
+          }
+          connection.txInProgress = true;
+          log(2, "Sending "+ JSON.stringify(chunk));
+          connection.writeLowLevel(chunk).then(function() {
+            log(3, "Sent");
+            if (!txItem.data) {
+              connection.txDataQueue.shift(); // remove this element
+              if (txItem.callback)
+                txItem.callback();
+              if (txItem.resolve)
+                txItem.resolve();
+            }
+            connection.txInProgress = false;
+            writeChunk();
+          }, function(error) {
+            log(1, 'SEND ERROR: ' + error);
+            uart.writeProgress();
+            connection.updateProgress();
+            connection.txDataQueue = [];
+            connection.close();
+          });
+        }
+      });
+    };
 
     /* Send a packet of type "RESPONSE/EVAL/EVENT/FILE_SEND/DATA" to Espruino
        options = {
@@ -745,16 +817,11 @@ To do:
          // nothing yet...
        }
        */
-      var DEFAULT_CHUNKSIZE = 20;
-
       var btServer = undefined;
       var btService;
       var connectionDisconnectCallback;
       var txCharacteristic;
       var rxCharacteristic;
-      var txDataQueue = [];
-      var flowControlXOFF = false;
-      var chunkSize = DEFAULT_CHUNKSIZE;
 
       connection.close = function(callback) {
         connection.isOpening = false;
@@ -771,52 +838,10 @@ To do:
           rxCharacteristic = undefined;
         }
       };
-
-      connection.write = function(data, callback) {
-        return new Promise((resolve,reject) => {
-          if (data) txDataQueue.push({data:data,callback:callback,maxLength:data.length,resolve:resolve});
-          if (connection.isOpen && !connection.txInProgress) writeChunk();
-
-          function writeChunk() {
-            if (flowControlXOFF) { // flow control - try again later
-              setTimeout(writeChunk, 50);
-              return;
-            }
-            var chunk;
-            if (!txDataQueue.length) {
-              connection.updateProgress();
-              return;
-            }
-            var txItem = txDataQueue[0];
-            connection.updateProgress(txItem.maxLength - txItem.data.length, txItem.maxLength);
-            if (txItem.data.length <= chunkSize) {
-              chunk = txItem.data;
-              txItem.data = undefined;
-            } else {
-              chunk = txItem.data.substr(0,chunkSize);
-              txItem.data = txItem.data.substr(chunkSize);
-            }
-            connection.txInProgress = true;
-            log(2, "Sending "+ JSON.stringify(chunk.length>80?chunk.substr(0,80)+"...":chunk));
-            txCharacteristic.writeValue(str2ab(chunk)).then(function() {
-              log(3, "Sent");
-              if (!txItem.data) {
-                txDataQueue.shift(); // remove this element
-                if (txItem.callback)
-                  txItem.callback();
-                if (txItem.resolve)
-                  txItem.resolve();
-              }
-              connection.txInProgress = false;
-              writeChunk();
-            }).catch(function(error) {
-              log(1, 'SEND ERROR: ' + error);
-              txDataQueue = [];
-              connection.close();
-            });
-          }
-        });
+      connection.writeLowLevel = function(data) {
+        return txCharacteristic.writeValue(str2ab(data));
       };
+      connection.chunkSize = 20; // set a starting chunk size of Bluetooth LE (this is the max if it hasn't been negotiated higher)
 
       return navigator.bluetooth.requestDevice(uart.optionsBluetooth).then(function(device) {
         log(1, 'Device Name:       ' + device.name);
@@ -841,24 +866,11 @@ To do:
         log(2, "RX characteristic:"+JSON.stringify(rxCharacteristic));
         rxCharacteristic.addEventListener('characteristicvaluechanged', function(event) {
           var dataview = event.target.value;
-          if (uart.increaseMTU && (dataview.byteLength > chunkSize)) {
+          if (uart.increaseMTU && (dataview.byteLength > connection.chunkSize)) {
             log(2, "Received packet of length "+dataview.byteLength+", increasing chunk size");
-            chunkSize = dataview.byteLength;
+            connection.chunkSize = dataview.byteLength;
           }
-          if (uart.flowControl) {
-            for (var i=0;i<dataview.byteLength;i++) {
-              var ch = dataview.getUint8(i);
-              if (ch==17) { // XON
-                log(2,"XON received => resume upload");
-                flowControlXOFF = false;
-              }
-              if (ch==19) { // XOFF
-                log(2,"XOFF received => pause upload");
-                flowControlXOFF = true;
-              }
-            }
-          }
-          connection.rxDataHandler(ab2str(dataview.buffer));
+          connection.rxDataHandler(dataview.buffer);
         });
         return rxCharacteristic.startNotifications();
       }).then(function() {
@@ -921,7 +933,7 @@ To do:
         }
         // readLoop will finish and *that* calls disconnect and cleans up
       };
-      connection.write = function(data, callback, alreadyRetried) {
+      connection.writeLowLevel = function(data, callback, alreadyRetried) {
         return new Promise((resolve, reject) => {
           if (!serialPort || !serialPort.writable) return reject ("Not connected");
           if (serialPort.writable.locked) {
@@ -932,17 +944,12 @@ To do:
             return;
           }
           writer = serialPort.writable.getWriter();
-          log(2, "Sending "+ JSON.stringify(data));
-          connection.updateProgress(0, data.length);
           writer.write(str2ab(data)).then(function() {
-            connection.updateProgress();
             writer.releaseLock();
             writer = undefined;
-            log(3, "Sent");
             if (callback) callback();
             resolve();
           }).catch(function(error) {
-            connection.updateProgress();
             if (writer) {
               writer.releaseLock();
               writer.close();
@@ -967,7 +974,7 @@ To do:
             reader.releaseLock();
             reader = undefined;
             if (value)
-              connection.rxDataHandler(ab2str(value.buffer));
+              connection.rxDataHandler(value.buffer);
             if (done) { // connection is closed
               if (serialPort) {
                 serialPort.close();
