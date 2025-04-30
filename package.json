@@ -1,0 +1,23 @@
+{
+  "name": "espruinowebtools",
+  "version": "0.01",
+  "description": "Lightweight tools for use on websites with Espruino-based microcontrollers",
+  "author": "Gordon Williams <gw@pur3.co.uk> (http://espruino.com)",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/espruino/EspruinoWebTools/issues"
+  },
+  "homepage": "https://github.com/espruino/EspruinoWebTools#readme",
+  "scripts": {
+    "lint": "eslint puck.js imageconverter.js fontconverter.js"
+  },
+  "dependencies": {
+    "btoa": "^1.2.1",
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "eslint": "^8.57.1",
+    "typescript": "^5.8.3"
+  }
+}

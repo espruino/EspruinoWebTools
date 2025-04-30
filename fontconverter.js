@@ -19,21 +19,23 @@ Requires:
 npm install btoa pngjs
 */
 (function (root, factory) {
+  /* global define */
   if (typeof define === 'function' && define.amd) {
-      // AMD. Register as an anonymous module.
-      define(['heatshrink'], factory);
+    // AMD. Register as an anonymous module.
+    define(['heatshrink'], factory);
   } else if (typeof module === 'object' && module.exports) {
-      // Node. Does not work with strict CommonJS, but
-      // only CommonJS-like environments that support module.exports,
-      // like Node.
-      module.exports = factory(require('./heatshrink.js'));
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like environments that support module.exports,
+    // like Node.
+    module.exports = factory(require('./heatshrink.js'));
   } else {
-      // Browser globals (root is window)
-      root.fontconverter = factory(root.heatshrink);
+    // Browser globals (root is window)
+    root.fontconverter = factory(root.heatshrink);
   }
 }(typeof self !== 'undefined' ? self : this, function(heatshrink) {
 
-if ("undefined"==typeof btoa) btoa = function (input) {
+// Node.js doesn't have btoa
+let btoaSafe = ("undefined" !== typeof btoa) ? btoa : function (input) {
     var b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     var out = "";
     var i=0;
@@ -61,18 +63,18 @@ if ("undefined"==typeof btoa) btoa = function (input) {
   };
 
 function bitsToBytes(bits, bpp) {
-  var bytes = [];
+  let bytes = [];
   if (bpp==1) {
-    for (var i=0;i<bits.length;i+=8) {
-      var byte = 0;
-      for (var b=0;b<8;b++)
+    for (let i=0;i<bits.length;i+=8) {
+      let byte = 0;
+      for (let b=0;b<8;b++)
         byte |= (bits[i+b]) << (7-b);
       bytes.push(byte);
     }
   } else if (bpp==2) {
-    for (var i=0;i<bits.length;i+=4) {
-      var byte = 0;
-      for (var b=0;b<4;b++)
+    for (let i=0;i<bits.length;i+=4) {
+      let byte = 0;
+      for (let b=0;b<4;b++)
         byte |= bits[i+b] << (6-b*2);
       bytes.push(byte);
     }
@@ -153,14 +155,14 @@ Font.prototype.isChInRange = function(ch) {
 FontGlyph.prototype.appendBits = function(bits, info) {
   // glyphVertical : are glyphs scanned out vertically or horizontally?
   if (info.glyphVertical) {
-    for (var x=this.xStart;x<=this.xEnd;x++) {
-      for (var y=this.yStart;y<=this.yEnd;y++) {
+    for (let x=this.xStart;x<=this.xEnd;x++) {
+      for (let y=this.yStart;y<=this.yEnd;y++) {
         bits.push(this.getPixel(x,y));
       }
     }
   } else {
-    for (var y=this.yStart;y<=this.yEnd;y++) {
-      for (var x=this.xStart;x<=this.xEnd;x++) {
+    for (let y=this.yStart;y<=this.yEnd;y++) {
+      for (let x=this.xStart;x<=this.xEnd;x++) {
         bits.push(this.getPixel(x,y));
       }
     }
@@ -168,13 +170,13 @@ FontGlyph.prototype.appendBits = function(bits, info) {
  }
 
  FontGlyph.prototype.getImageData = function() {
-   var bpp = this.font.bpp;
-   var img = new ImageData(this.xEnd+1, this.yEnd+1);
-   for (var y=0;y<=this.yEnd;y++)
-     for (var x=0;x<=this.xEnd;x++) {
-      var n = (x + y*img.width)*4;
-      var c = this.getPixel(x,y);
-      var prevCol = 255 - ((bpp==1) ? c*255 : (c << (8-bpp)));
+   let bpp = this.font.bpp;
+   let img = new ImageData(this.xEnd+1, this.yEnd+1);
+   for (let y=0;y<=this.yEnd;y++)
+     for (let x=0;x<=this.xEnd;x++) {
+      let n = (x + y*img.width)*4;
+      let c = this.getPixel(x,y);
+      let prevCol = 255 - ((bpp==1) ? c*255 : (c << (8-bpp)));
       img.data[n] = img.data[n+1] = img.data[n+2] = prevCol;
       if (x>=this.xStart && y>=this.yStart) {
         img.data[n] = 128;
@@ -353,7 +355,7 @@ function loadPNG(fontInfo) {
     var o = (x + (y*png.width))*4;
     var c = png.data.readInt32LE(o);
     var a = (c>>24)&255;
-    var b = (c>>16)&255;;
+    var b = (c>>16)&255;
     var g = (c>>8)&255;
     var r = c&255;
     if (a<128) return 0; // no alpha
@@ -400,7 +402,9 @@ function loadPBFF(fontInfo) {
   var font = [];
   require("fs").readFileSync(fontInfo.fn).toString().split("\n").forEach(l => {
     if (l.startsWith("version")) {
+      // ignore
     } else if (l.startsWith("fallback")) {
+      // ignore
     } else if (l.startsWith("line-height")) {
       if (!fontInfo.fmHeight) // if no height specified
         fontInfo.fmHeight = 0|l.split(" ")[1];
@@ -502,11 +506,11 @@ function loadBDF(fontInfo) {
       fontBitmap=undefined;
     }
     if (fontBitmap!==undefined) {
-      var l = "";
-      for (var i=0;i<charBoundingBox[2];i++)
+      let l = "";
+      for (let i=0;i<charBoundingBox[2];i++)
         l += " "; // padding
-      for (var i=0;i<line.length;i++) {
-        var c = parseInt(line[i],16);
+      for (let i=0;i<line.length;i++) {
+        let c = parseInt(line[i],16);
         l += ((c+16).toString(2)).substr(-4).replace(/0/g," ");
       }
       fontBitmap.push(l);
@@ -634,10 +638,10 @@ Font.prototype.getJS = function(options) {
     const compressedFont = String.fromCharCode.apply(null, heatshrink.compress(fontArray));
     encodedFont =
       "E.toString(require('heatshrink').decompress(atob('" +
-      btoa(compressedFont) +
+      btoaSafe(compressedFont) +
       "')))";
   } else {
-    encodedFont = "atob('" + btoa(String.fromCharCode.apply(null, fontData)) + "')";
+    encodedFont = "atob('" + btoaSafe(String.fromCharCode.apply(null, fontData)) + "')";
   }
 
   return `Graphics.prototype.setFont${this.id} = function() {
@@ -646,7 +650,7 @@ Font.prototype.getJS = function(options) {
   return this.setFontCustom(
     ${encodedFont},
     ${charMin},
-    ${fixedWidth?fontWidths[0]:`atob("${btoa(String.fromCharCode.apply(null,fontWidths))}")`},
+    ${fixedWidth?fontWidths[0]:`atob("${btoaSafe(String.fromCharCode.apply(null,fontWidths))}")`},
     ${this.height}|${this.bpp<<16}
   );
 }\n`;
@@ -885,12 +889,12 @@ Font.prototype.getPBF = function() {
   });
 
   // finally combine
-  if (1) {
+  //if (1) {
     console.log(`Header     :\t0\t${pbfHeader.byteLength}`);
     console.log(`HashTable: \t${pbfHeader.byteLength}\t${pbfHashTable.byteLength}`);
     console.log(`OffsetTable:\t${pbfHeader.byteLength+pbfHashTable.byteLength}\t${pbfOffsetTable.byteLength}`);
     console.log(`GlyphTable: \t${pbfHeader.byteLength+pbfHashTable.byteLength+pbfOffsetTable.byteLength}\t${pbfGlyphTable.byteLength}`);
-  }
+  //}
   var fontFile = new Uint8Array(pbfHeader.byteLength + pbfHashTable.byteLength + pbfOffsetTable.byteLength + pbfGlyphTable.byteLength);
   fontFile.set(new Uint8Array(pbfHeader.buffer), 0);
   fontFile.set(new Uint8Array(pbfHashTable.buffer), pbfHeader.byteLength);
@@ -1015,8 +1019,8 @@ line-height ${this.height}
 Font.prototype.renderString = function(text) {
   // work out width
   var width = 0;
-  for (var i=0;i<text.length;i++) {
-    var ch = text.charCodeAt(i);
+  for (let i=0;i<text.length;i++) {
+    let ch = text.charCodeAt(i);
     if (!this.glyphs[ch]) continue;
     width += this.glyphs[ch].advance;
   }
@@ -1025,17 +1029,17 @@ Font.prototype.renderString = function(text) {
   // render
   const bpp = this.bpp;
   var ox = 0;
-  for (var i=0;i<text.length;i++) {
-    var ch = text.charCodeAt(i);
+  for (let i=0;i<text.length;i++) {
+    let ch = text.charCodeAt(i);
     if (!this.glyphs[ch]) continue;
-    var g = this.glyphs[ch];
-    for (var y=g.yStart;y<=g.yEnd;y++) {
-      for (var x=g.xStart;x<=g.xEnd;x++) {
-        var c  = g.getPixel(x,y) << 8-bpp;
+    let g = this.glyphs[ch];
+    for (let y=g.yStart;y<=g.yEnd;y++) {
+      for (let x=g.xStart;x<=g.xEnd;x++) {
+        let c  = g.getPixel(x,y) << 8-bpp;
         c |= c>>bpp;
         c |= c>>(bpp*2);
         c |= c>>(bpp*4);
-        var px = x+ox;
+        let px = x+ox;
         if ((px>=0) && (px < width) && (y>=0) && (y<this.height))
           bmp[px + (y*width)] = 0xFF000000 | (c<<16) | (c<<8) | c;
       }
@@ -1048,12 +1052,12 @@ Font.prototype.renderString = function(text) {
 
 // Render the given text and output it to the console
 Font.prototype.printString = function(text) {
-  var img = this.renderString(text);
+  let img = this.renderString(text);
   console.log("-".repeat(img.width));
-  for (var y=0;y<img.height;y++) {
-    var l = "";
-    for (var x=0;x<img.width;x++) {
-      var c = (img.data[x + (y*img.width)]&255) >> 6;
+  for (let y=0;y<img.height;y++) {
+    let l = "";
+    for (let x=0;x<img.width;x++) {
+      let c = (img.data[x + (y*img.width)]&255) >> 6;
       l += "░▒▓█"[c];
     }
     console.log(l);
