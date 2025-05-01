@@ -394,7 +394,7 @@ To do:
     if (uart.log) uart.log(level, s);
   }
 
-  /// Base connection class - BLE/Serial add their write/etc on top of this
+  /// Base connection class - BLE/Serial add writeLowLevel/closeLowLevel/etc on top of this
   class Connection {
     endpoint = undefined; // Set to the endpoint used for this connection - eg maybe endpoint.name=="Web Bluetooth"
     // on/emit work for close/data/open/error/ack/nak/packet events
@@ -407,8 +407,9 @@ To do:
     // on("packet", (type,data) => ... ) when a packet is received (if .parsePackets=true)
     // on("ack", () => ... ) when an ACK is received (if .parsePackets=true)
     // on("nak", () => ... ) when an ACK is received (if .parsePackets=true)
-    // writeLowLevel(data)=>Promise to be provided by implementor
-    // close() to be provided by implementor
+    // writeLowLevel(string)=>Promise to be provided by implementor
+    // closeLowLevel() to be provided by implementor
+    // cb(dataStr) called if defined
     isOpen = false;       // is the connection actually open?
     isOpening = true;     // in the process of opening a connection?
     txInProgress = false; // is transmission in progress?
@@ -502,7 +503,49 @@ To do:
       }
     }
 
-    /** Call this to send data, this splits data, handles queuing and flow control, and calls writeLowLevel to actually write the data  */
+    /** Called when the connection is opened */
+    openHandler() {
+      log(1, "Connected");
+      this.txInProgress = false;
+      this.isOpen = true;
+      this.isOpening = false;
+      this.received = "";
+      this.hadData = false;
+      this.flowControlWait = 0;
+      this.rxDataHandlerLastCh = 0;
+      if (this.isOpen) {
+        this.isOpen = false;
+        this.emit("open");
+      }
+      // if we had any writes queued, do them now
+      this.write();
+    }
+
+    /** Called when the connection is closed - resets any stored info/rejects promises */
+    closeHandler() {
+      log(1, "Disconnected");
+      this.isOpening = false;
+      this.txInProgress = false;
+      this.txDataQueue = [];
+      this.hadData = false;
+      if (this.isOpen) {
+        this.isOpen = false;
+        this.emit("close");
+      }
+    }
+
+    /** Called to close the connection */
+    close() {
+      this.closeLowLevel();
+      this.closeHandler();
+    }
+
+    /** Call this to send data, this splits data, handles queuing and flow control, and calls writeLowLevel to actually write the data.
+     * 'callback' can optionally return a promise, in which case writing only continues when the promise resolves
+     * @param {string} data
+     * @param {() => Promise|void} callback
+     * @returns {Promise}
+      */
     write(data, callback) {
       let connection = this;
       return new Promise((resolve,reject) => {
@@ -539,15 +582,18 @@ To do:
           log(2, "Sending "+ JSON.stringify(chunk));
           connection.writeLowLevel(chunk).then(function() {
             log(3, "Sent");
+            let promise = undefined;
             if (!txItem.data) {
               connection.txDataQueue.shift(); // remove this element
               if (txItem.callback)
-                txItem.callback();
+                promise = txItem.callback();
               if (txItem.resolve)
                 txItem.resolve();
             }
+            if (!(promise instanceof Promise))
+              promise = Promise.resolve();
             connection.txInProgress = false;
-            writeChunk();
+            promise.then(writeChunk); // if txItem.callback() returned a promise, wait until it completes before continuing
           }, function(error) {
             log(1, 'SEND ERROR: ' + error);
             uart.writeProgress();
@@ -560,10 +606,10 @@ To do:
     }
 
     /* Send a packet of type "RESPONSE/EVAL/EVENT/FILE_SEND/DATA" to Espruino
-       options = {
-         noACK : bool (don't wait to acknowledgement - default=false)
-         timeout : int (optional, milliseconds, default=5000) if noACK=false
-       }
+        options = {
+          noACK : bool (don't wait to acknowledgement - default=false)
+          timeout : int (optional, milliseconds, default=5000) if noACK=false
+        }
     */
     espruinoSendPacket(pkType, data, options) {
       options = options || {};
@@ -622,13 +668,13 @@ To do:
       });
     }
     /* Send a file to Espruino using 2v25 packets.
-       options = { // mainly passed to Espruino
-         fs : true // optional -> write using require("fs") (to SD card)
-         noACK : bool // (don't wait to acknowledgements)
-         chunkSize : int // size of chunks to send (default 1024) for safety this depends on how big your device's input buffer is if there isn't flow control
-         progress : (chunkNo,chunkCount)=>{} // callback to report upload progress
-         timeout : int (optional, milliseconds, default=1000)
-   } */
+        options = { // mainly passed to Espruino
+          fs : true // optional -> write using require("fs") (to SD card)
+          noACK : bool // (don't wait to acknowledgements)
+          chunkSize : int // size of chunks to send (default 1024) for safety this depends on how big your device's input buffer is if there isn't flow control
+          progress : (chunkNo,chunkCount)=>{} // callback to report upload progress
+          timeout : int (optional, milliseconds, default=1000)
+    } */
     espruinoSendFile(filename, data, options) {
       if ("string"!=typeof data) throw new Error("'data' must be a String");
       let CHUNK = 1024;
@@ -681,12 +727,12 @@ To do:
       }
     }
     /* Receive a file from Espruino using 2v25 packets.
-       options = { // mainly passed to Espruino
-         fs : true // optional -> write using require("fs") (to SD card)
-         timeout : int // milliseconds timeout (default=1000)
-         progress : (bytes)=>{} // callback to report upload progress
-       }
-   } */
+        options = { // mainly passed to Espruino
+          fs : true // optional -> write using require("fs") (to SD card)
+          timeout : int // milliseconds timeout (default=2000)
+          progress : (bytes)=>{} // callback to report upload progress
+        }
+    } */
     espruinoReceiveFile(filename, options) {
       options = options||{};
       options.fn = filename;
@@ -701,7 +747,7 @@ To do:
             timeout = undefined;
             cleanup();
             reject("espruinoReceiveFile Timeout");
-          }, options.timeout || 1000);
+          }, options.timeout || 2000);
         }
         function cleanup() {
           connection.removeListener("packet", onPacket);
@@ -735,8 +781,8 @@ To do:
     }
     /* Send a JS expression to be evaluated on Espruino using using 2v25 packets.
         options = {
-           timeout : int // milliseconds timeout (default=1000)
-           stmFix : bool // if set, this works around an issue in Espruino STM32 2v24 and earlier where USB could get in a state where it only sent small chunks of data at a time
+            timeout : int // milliseconds timeout (default=1000)
+            stmFix : bool // if set, this works around an issue in Espruino STM32 2v24 and earlier where USB could get in a state where it only sent small chunks of data at a time
         }*/
     espruinoEval(expr, options) {
       options = options || {};
@@ -759,7 +805,7 @@ To do:
         function onPacket(type,data) {
           if (type!=0) return; // ignore things that are not a response
           cleanup();
-          setTimeout(resolve,0,parseRJSON(data));
+          setTimeout(resolve,0, parseRJSON(data));
         }
         connection.parsePackets = true;
         connection.on("packet", onPacket);
@@ -784,7 +830,8 @@ To do:
         });
       });
     }
-  }
+  } // End of Connection class
+
 
   /// Endpoints for each connection method
   var endpoints = [];
@@ -821,19 +868,13 @@ To do:
       var txCharacteristic;
       var rxCharacteristic;
 
-      connection.close = function(callback) {
-        connection.isOpening = false;
-        if (connection.isOpen) {
-          connection.isOpen = false;
-          connection.emit('close');
-        } else {
-          if (callback) callback(null);
-        }
+      connection.closeLowLevel = function() {
+        txCharacteristic = undefined;
+        rxCharacteristic = undefined;
+        btService = undefined;
         if (btServer) {
           btServer.disconnect();
           btServer = undefined;
-          txCharacteristic = undefined;
-          rxCharacteristic = undefined;
         }
       };
       connection.writeLowLevel = function(data) {
@@ -877,14 +918,9 @@ To do:
         txCharacteristic = characteristic;
         log(2, "TX characteristic:"+JSON.stringify(txCharacteristic));
       }).then(function() {
-        connection.txInProgress = false;
-        connection.isOpen = true;
-        connection.isOpening = false;
+        connection.openHandler();
         isBusy = false;
         queue = [];
-        connection.emit('open');
-        // if we had any writes queued, do them now
-        connection.write();
         return connection;
       }).catch(function(error) {
         log(1, 'ERROR: ' + error);
@@ -913,15 +949,10 @@ To do:
        */
       let serialPort, reader, writer;
       function disconnected() {
-        connection.isOpening = false;
-        if (connection.isOpen) {
-          log(1, "Disconnected");
-          connection.isOpen = false;
-          connection.emit('close');
-        }
+        connection.closeHandler();
       }
 
-      connection.close = function(callback) {
+      connection.closeLowLevel = function(callback) {
         if (writer) {
           writer.close();
           writer = undefined;
@@ -992,11 +1023,8 @@ To do:
             disconnected();
         });
         }
+	connection.openHandler();
         readLoop();
-        log(1,"Serial connected. Receiving data...");
-        connection.txInProgress = false;
-        connection.isOpen = true;
-        connection.isOpening = false;
         return connection;
       }).catch(function(error) {
         log(0, 'ERROR: ' + error);
