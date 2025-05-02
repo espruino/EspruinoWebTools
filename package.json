@@ -9,7 +9,7 @@
   },
   "homepage": "https://github.com/espruino/EspruinoWebTools#readme",
   "scripts": {
-    "lint": "eslint puck.js imageconverter.js fontconverter.js"
+    "lint": "eslint uart.js puck.js imageconverter.js fontconverter.js"
   },
   "dependencies": {
     "btoa": "^1.2.1",
