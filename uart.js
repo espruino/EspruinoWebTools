@@ -513,8 +513,8 @@ To do:
       this.hadData = false;
       this.flowControlWait = 0;
       this.rxDataHandlerLastCh = 0;
-      if (this.isOpen) {
-        this.isOpen = false;
+      if (!this.isOpen) {
+        this.isOpen = true;
         this.emit("open");
       }
       // if we had any writes queued, do them now
@@ -569,8 +569,8 @@ To do:
             return;
           }
           var txItem = connection.txDataQueue[0];
-          uart.writeProgress(txItem.maxLength - txItem.data.length, txItem.maxLength);
-          connection.updateProgress(txItem.maxLength - txItem.data.length, txItem.maxLength);
+          uart.writeProgress(txItem.maxLength - (txItem.data?txItem.data.length:0), txItem.maxLength);
+          connection.updateProgress(txItem.maxLength - (txItem.data?txItem.data.length:0), txItem.maxLength);
           if (txItem.data.length <= connection.chunkSize) {
             chunk = txItem.data;
             txItem.data = undefined;
@@ -893,7 +893,7 @@ To do:
         });
         return device.gatt.connect();
       }).then(function(server) {
-        log(1, "Connected");
+        log(2, "BLE Connected");
         btServer = server;
         return server.getPrimaryService(NORDIC_SERVICE);
       }).then(function(service) {
