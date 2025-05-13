@@ -91,6 +91,7 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.16: Misc reliability improvements (if connection fails during write or if BLE Characteristics reused)
 1.15: Flow control and chunking moved to Connection class
       XON/XOFF flow control now works on Serial
 1.14: Ignore 'backspace' character when searching for newlines
@@ -523,14 +524,15 @@ To do:
 
     /** Called when the connection is closed - resets any stored info/rejects promises */
     closeHandler() {
-      log(1, "Disconnected");
       this.isOpening = false;
       this.txInProgress = false;
       this.txDataQueue = [];
       this.hadData = false;
       if (this.isOpen) {
+        log(1, "Disconnected");
         this.isOpen = false;
         this.emit("close");
+        connection = undefined;
       }
     }
 
@@ -868,8 +870,19 @@ To do:
       var txCharacteristic;
       var rxCharacteristic;
 
+      function bleRxListener(event) {
+        var dataview = event.target.value;
+        if (uart.increaseMTU && (dataview.byteLength > connection.chunkSize)) {
+          log(2, "Received packet of length "+dataview.byteLength+", increasing chunk size");
+          connection.chunkSize = dataview.byteLength;
+        }
+        connection.rxDataHandler(dataview.buffer);
+      }
+
       connection.closeLowLevel = function() {
         txCharacteristic = undefined;
+        if (rxCharacteristic) 
+          rxCharacteristic.removeEventListener('characteristicvaluechanged', bleRxListener);
         rxCharacteristic = undefined;
         btService = undefined;
         if (btServer) {
@@ -903,14 +916,7 @@ To do:
       }).then(function (characteristic) {
         rxCharacteristic = characteristic;
         log(2, "RX characteristic:"+JSON.stringify(rxCharacteristic));
-        rxCharacteristic.addEventListener('characteristicvaluechanged', function(event) {
-          var dataview = event.target.value;
-          if (uart.increaseMTU && (dataview.byteLength > connection.chunkSize)) {
-            log(2, "Received packet of length "+dataview.byteLength+", increasing chunk size");
-            connection.chunkSize = dataview.byteLength;
-          }
-          connection.rxDataHandler(dataview.buffer);
-        });
+        rxCharacteristic.addEventListener('characteristicvaluechanged', bleRxListener);
         return rxCharacteristic.startNotifications();
       }).then(function() {
         return btService.getCharacteristic(NORDIC_TX);
@@ -1021,9 +1027,9 @@ To do:
               serialPort = undefined;
             }
             disconnected();
-        });
+          });
         }
-	connection.openHandler();
+        connection.openHandler();
         readLoop();
         return connection;
       }).catch(function(error) {
@@ -1197,6 +1203,10 @@ To do:
         const POLLINTERVAL = 100;
         cbTimeout = setTimeout(function timeout() {
           cbTimeout = undefined;
+          if (connection===undefined) {
+            if (callback) callback("");
+            return reject("Disconnected");
+          }
           if (maxTime>0) maxTime-=POLLINTERVAL;
           if (maxDataTime>0) maxDataTime-=POLLINTERVAL;
           if (connection.hadData) maxDataTime=dataWaitTime;
@@ -1223,10 +1233,12 @@ To do:
         return connection.write(data, onWritten);
       }
 
-      return connect().then(function(connection) {
+      return connect().then(function(_connection) {
+        if (_connection !== connection) console.warn("Resolved Connection doesn't match current connection!");
         isBusy = true;
-        connection.write(data, onWritten/*calls resolve*/);
+        return connection.write(data, onWritten/*calls resolve*/);
       }, function(error) {
+        isBusy = false;
         reject(error);
       });
     });
@@ -1252,7 +1264,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.14",
+    version : "1.16",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
