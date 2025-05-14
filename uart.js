@@ -91,6 +91,7 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.17: Work around Linux Web Bluetooth Bug (connect-disconnect-connect to same device)
 1.16: Misc reliability improvements (if connection fails during write or if BLE Characteristics reused)
 1.15: Flow control and chunking moved to Connection class
       XON/XOFF flow control now works on Serial
@@ -870,22 +871,31 @@ To do:
       var txCharacteristic;
       var rxCharacteristic;
 
+      // Called when RX charactersistic changed (= data received)
       function bleRxListener(event) {
+        /* work around Linux Web Bluetooth bug (https://github.com/espruino/BangleApps/issues/3850) where
+        doing removeEventListener on an old connection and addEventListenerlistener on a new one causes
+        the new one not to be called. We have to leave the original listener after the connection closes
+        and then just update where we send the data based on the GattServer which *doesn't* change! */
+        let conn = event.target.service.device.gatt.uartConnection; // btServer.uartConnection
+        // actually process data
         var dataview = event.target.value;
-        if (uart.increaseMTU && (dataview.byteLength > connection.chunkSize)) {
+        // if received data longer than our recorded MTU it means we can also send data this long
+        // ... we have to do this as there's no other way to check the MTU
+        if (uart.increaseMTU && (dataview.byteLength > conn.chunkSize)) {
           log(2, "Received packet of length "+dataview.byteLength+", increasing chunk size");
-          connection.chunkSize = dataview.byteLength;
+          conn.chunkSize = dataview.byteLength;
         }
-        connection.rxDataHandler(dataview.buffer);
+        // Finally pass the data to our connection
+        conn.rxDataHandler(dataview.buffer);
       }
 
       connection.closeLowLevel = function() {
         txCharacteristic = undefined;
-        if (rxCharacteristic) 
-          rxCharacteristic.removeEventListener('characteristicvaluechanged', bleRxListener);
         rxCharacteristic = undefined;
         btService = undefined;
         if (btServer) {
+          btServer.uartConnection = undefined;
           btServer.disconnect();
           btServer = undefined;
         }
@@ -908,6 +918,7 @@ To do:
       }).then(function(server) {
         log(2, "BLE Connected");
         btServer = server;
+        btServer.uartConnection = connection;
         return server.getPrimaryService(NORDIC_SERVICE);
       }).then(function(service) {
         log(2, "Got service");
@@ -1264,7 +1275,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.16",
+    version : "1.17",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
