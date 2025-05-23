@@ -545,7 +545,6 @@ To do:
         log(1, "Disconnected");
         this.isOpen = false;
         this.emit("close");
-        connection = undefined;
       }
     }
 
