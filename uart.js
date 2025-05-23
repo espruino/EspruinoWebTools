@@ -91,6 +91,7 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.18: Add connection.on("line"...) event, export parseRJSON, handle 'NaN' in RJSON
 1.17: Work around Linux Web Bluetooth Bug (connect-disconnect-connect to same device)
 1.16: Misc reliability improvements (if connection fails during write or if BLE Characteristics reused)
 1.15: Flow control and chunking moved to Connection class
@@ -346,6 +347,7 @@ To do:
           case "true" : tok = lex.next(); return true;
           case "false" : tok = lex.next(); return false;
           case "null" : tok = lex.next(); return null;
+          case "NaN" : tok = lex.next(); return NaN;
         }
         if (tok.str == "[") {
           tok = lex.next();
@@ -406,6 +408,7 @@ To do:
     // on("open", () => ... ) connection opened
     // on("close", () => ... ) connection closed
     // on("data", (data) => ... ) when data is received (as string)
+    // on("line", (line) => ... ) when a line of data is received (as string), uses /r OR /n for lines
     // on("packet", (type,data) => ... ) when a packet is received (if .parsePackets=true)
     // on("ack", () => ... ) when an ACK is received (if .parsePackets=true)
     // on("nak", () => ... ) when an ACK is received (if .parsePackets=true)
@@ -424,6 +427,7 @@ To do:
     rxDataHandlerLastCh = 0; // used by rxDataHandler - last received character
     rxDataHandlerPacket = undefined; // used by rxDataHandler - used for parsing
     rxDataHandlerTimeout = undefined; // timeout for unfinished packet
+    rxLine = "";          // current partial line for on("line" event
     progressAmt = 0;      // When sending a file, how many bytes through are we?
     progressMax = 0;      // When sending a file, how long is it in bytes? 0 if not sending a file
 
@@ -502,6 +506,13 @@ To do:
         // forward any data
         if (this.cb) this.cb(data);
         this.emit('data', data);
+        // look for newlines and send out a 'line' event
+        let lines = (this.rxLine + data).split(/\r\n/);
+        while (lines.length>1)
+          this.emit('line', lines.shift());
+        this.rxLine = lines[0];
+        if (this.rxLine.length > 10000) // only store last 10k characters
+          this.rxLine = this.rxLine.slice(-10000);
       }
     }
 
@@ -515,6 +526,7 @@ To do:
       this.hadData = false;
       this.flowControlWait = 0;
       this.rxDataHandlerLastCh = 0;
+      this.rxLine = "";
       if (!this.isOpen) {
         this.isOpen = true;
         this.emit("open");
@@ -1275,7 +1287,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.17",
+    version : "1.18",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
@@ -1370,7 +1382,9 @@ To do:
         { namePrefix: 'Thingy' },
         { namePrefix: 'Espruino' },
         { services: [ NORDIC_SERVICE ] }
-      ], optionalServices: [ NORDIC_SERVICE ]}
+      ], optionalServices: [ NORDIC_SERVICE ]},
+    /* function(string) => object - parse relaxed JSON (eg {a:1} rather than {"a":1}) or throw exception if invalid */
+    parseRJSON : parseRJSON
   };
   return uart;
 }));
