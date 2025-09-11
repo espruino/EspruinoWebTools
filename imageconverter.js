@@ -224,7 +224,8 @@
     "errorrandom":"Randomised Error Diffusion",
     "bayer2":"2x2 Bayer",
     "bayer4":"4x4 Bayer",
-    "comic":"Comic book"
+    "comic":"Comic book",
+    "floyd":"Floyd-Steinberg"
   };
 
   const DITHER = {
@@ -403,7 +404,25 @@
       var pixels = new Int32Array(options.width*options.height);
       var n = 0;
       var er=0,eg=0,eb=0;
+      // Floyd-Steinberg error diffusion buffers (current row / next row)
+      var fs = (options.diffusion=="floyd");
+      var fsErrRRow, fsErrGRow, fsErrBRow, fsErrRNext, fsErrGNext, fsErrBNext;
+      if (fs) {
+        fsErrRRow = new Float32Array(options.width+2);
+        fsErrGRow = new Float32Array(options.width+2);
+        fsErrBRow = new Float32Array(options.width+2);
+        fsErrRNext = new Float32Array(options.width+2);
+        fsErrGNext = new Float32Array(options.width+2);
+        fsErrBNext = new Float32Array(options.width+2);
+      }
       for (var y=0; y<options.height; y++) {
+        if (fs) {
+          // move next row errors into current row, clear next row
+            var t;
+            t = fsErrRRow; fsErrRRow = fsErrRNext; fsErrRNext = t; fsErrRNext.fill(0);
+            t = fsErrGRow; fsErrGRow = fsErrGNext; fsErrGNext = t; fsErrGNext.fill(0);
+            t = fsErrBRow; fsErrBRow = fsErrBNext; fsErrBNext = t; fsErrBNext.fill(0);
+        }
         for (var x=0; x<options.width; x++) {
           var r = rgba[n*4];
           var g = rgba[n*4+1];
@@ -442,9 +461,20 @@
             g=255-g;
             b=255-b;
           }
-          r = clip(((r + options.brightness - 128)*contrast) + 128 + er);
-          g = clip(((g + options.brightness - 128)*contrast) + 128 + eg);
-          b = clip(((b + options.brightness - 128)*contrast) + 128 + eb);
+          if (fs) {
+            // Base adjust first, then add accumulated FS error from buffers
+            r = ((r + options.brightness - 128)*contrast) + 128;
+            g = ((g + options.brightness - 128)*contrast) + 128;
+            b = ((b + options.brightness - 128)*contrast) + 128;
+            var ix = x+1; // offset by 1 so we always have space at edges
+            r = clip(r + fsErrRRow[ix]);
+            g = clip(g + fsErrGRow[ix]);
+            b = clip(b + fsErrBRow[ix]);
+          } else {
+            r = clip(((r + options.brightness - 128)*contrast) + 128 + er);
+            g = clip(((g + options.brightness - 128)*contrast) + 128 + eg);
+            b = clip(((b + options.brightness - 128)*contrast) + 128 + eb);
+          }
           var isTransparent = a<128;
 
           var c = fmt.fromRGBA(r,g,b,a,palette);
@@ -459,7 +489,30 @@
           var or = (cr>>16)&255;
           var og = (cr>>8)&255;
           var ob = cr&255;
-          if (options.diffusion.startsWith("error") && a>128) {
+          if (fs && a>128) {
+            // Floyd-Steinberg distribution
+            var eR = r-or;
+            var eG = g-og;
+            var eB = b-ob;
+            // indexes with +1 offset
+            var ix = x+1;
+            // current row, pixel to the right
+            fsErrRRow[ix+1] += eR * (7/16);
+            fsErrGRow[ix+1] += eG * (7/16);
+            fsErrBRow[ix+1] += eB * (7/16);
+            // next row (below left, below, below right)
+            fsErrRNext[ix-1] += eR * (3/16);
+            fsErrGNext[ix-1] += eG * (3/16);
+            fsErrBNext[ix-1] += eB * (3/16);
+            fsErrRNext[ix]   += eR * (5/16);
+            fsErrGNext[ix]   += eG * (5/16);
+            fsErrBNext[ix]   += eB * (5/16);
+            fsErrRNext[ix+1] += eR * (1/16);
+            fsErrGNext[ix+1] += eG * (1/16);
+            fsErrBNext[ix+1] += eB * (1/16);
+            // no per-pixel carryover (er/eg/eb) used in FS mode
+            er = eg = eb = 0;
+          } else if (!fs && options.diffusion.startsWith("error") && a>128) {
             er = r-or;
             eg = g-og;
             eb = b-ob;
