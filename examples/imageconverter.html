@@ -19,6 +19,8 @@
    <input type="range" id="brightness" min="-127" max="127" value="0" onchange="imageLoaded()"></input><br/>
    Contrast: <span id="contrastv"></span>
    <input type="range" id="contrast" min="-255" max="255" value="0" onchange="imageLoaded()"></input><br/>
+  Scale: <span id="scalev"></span>
+   <input type="range" id="scale" min="1" max="400" value="100" onchange="imageLoaded()"></input><br/>
    Colours: <select id="colorStyle" onchange="imageLoaded()"></select><br/>
    Output As: <select id="outputStyle" onchange="imageLoaded()">
    </select><br/>
@@ -50,6 +52,9 @@
        document.getElementById("brightnessv").innerText = options.brightness;
        options.contrast = 0|document.getElementById("contrast").value;
        document.getElementById("contrastv").innerText = options.contrast;
+       var scale = 0|document.getElementById("scale").value;
+       options.scale = scale/100;
+       document.getElementById("scalev").innerText = scale+"%";
        var colorSelect = document.getElementById("colorStyle");
        options.mode = colorSelect.options[colorSelect.selectedIndex].value;
 
@@ -57,8 +62,8 @@
        options.output = outputSelect.options[outputSelect.selectedIndex].value;
 
        var canvas = document.getElementById("canvas")
-       canvas.width = img.width*2;
-       canvas.height = img.height;
+       canvas.width = img.width*(1+Math.max(1,options.scale));
+       canvas.height = img.height*Math.max(1,options.scale);
        canvas.style = "display:block;border:1px solid black;margin:8px;"
        var ctx = canvas.getContext("2d");
        ctx.drawImage(img,0,0);
