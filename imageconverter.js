@@ -334,8 +334,27 @@
     return dr*dr + dg*dg + db*db + da*da;
   }
 
+  // blend ca to cb, 0<=amt<=1
+  function blendRGBA8888(ca,cb, amt) {
+    var aa=(ca>>24)&255;
+    var ar=(ca>>16)&255;
+    var ag=(ca>>8)&255;
+    var ab=ca&255;
+    var ba=(cb>>24)&255;
+    var br=(cb>>16)&255;
+    var bg=(cb>>8)&255;
+    var bb=cb&255;
+
+    var namt = 1-amt;
+    var da = Math.round(aa*namt + ba*amt);
+    var dr = Math.round(ar*namt + br*amt);
+    var dg = Math.round(ag*namt + bg*amt);
+    var db = Math.round(ab*namt + bb*amt);
+    return (da<<24)|(dr<<16)|(dg<<16)|db;
+  }
 
   /*
+  rgba = Uint8Array(width*height*4)
   See 'getOptions' for possible options
   */
   function RGBAtoString(rgba, options) {
@@ -344,9 +363,11 @@
     if (!options.width) throw new Error("No Width specified");
     if (!options.height) throw new Error("No Height specified");
 
-    if (options.autoCrop) {
+    if (options.scale)
+      rgba = rescale(rgba, options);
+    if (options.autoCrop || options.autoCropCenter)
       rgba = autoCrop(rgba, options);
-    }
+    
 
     if ("string"!=typeof options.diffusion)
       options.diffusion = "none";
@@ -665,6 +686,13 @@
     }
     // no data! might as well just send it all
     if (x1>x2 || y1>y2) return rgba;
+    // if center, try and take the same off each side
+    if (options.autoCropCenter) {
+      x1 = Math.min(x1, (options.width-1)-x2);
+      y1 = Math.min(y1, (options.height-1)-y2);
+      x2 = (options.width-1)-x1;
+      y2 = (options.height-1)-y1;
+    } 
     // ok, crop!
     var w = 1+x2-x1;
     var h = 1+y2-y1;
@@ -675,6 +703,31 @@
     options.width = w;
     options.height = h;
     var cropped = new Uint8ClampedArray(dst.buffer);
+    if (options.rgbaOut) options.rgbaOut = cropped;
+    return cropped;
+  }
+
+  /* attempt to rescale the image - use bilinear interpolation */
+  function rescale(rgba, options) {
+    let scale = options.scale;
+    let dstw = Math.round(options.width*scale);
+    let dsth = Math.round(options.height*scale);
+    let src = new Uint32Array(rgba.buffer);
+    let srcw = options.width;
+    let dst = new Uint32Array(dstw*dsth);
+    for (let y=0;y<dsth;y++)
+      for (let x=0;x<dstw;x++) {
+        let oldx = x / scale;
+        let oldy = y / scale;
+        let ix = Math.floor(oldx), ax=oldx-ix; 
+        let iy = Math.floor(oldy), ay=oldy-iy;
+        let ca = blendRGBA8888(src[ix+(srcw*iy)], src[ix+1+(srcw*iy)], ax);
+        let cb = blendRGBA8888(src[ix+(srcw*(iy+1))], src[ix+1+(srcw*(iy+1))], ax);
+        dst[x+y*dstw] = blendRGBA8888(ca,cb,ay);
+      }
+    options.width = dstw;
+    options.height = dsth;
+    let cropped = new Uint8ClampedArray(dst.buffer);
     if (options.rgbaOut) options.rgbaOut = cropped;
     return cropped;
   }
@@ -715,6 +768,7 @@
     return {
       width : "int",
       height : "int",
+      scale : "float", // if specified, scale image size by some amount
       rgbaOut : "Uint8Array", //  to store quantised data
       diffusion : DIFFUSION_TYPES,
       compression : "bool",
@@ -731,6 +785,7 @@
       inverted : "bool",
       alphaToColor : "bool",
       autoCrop : "bool", // whether to crop the image's borders or not
+      autoCropCenter : "bool"
     }
   }
 
