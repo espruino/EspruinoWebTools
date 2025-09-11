@@ -368,7 +368,7 @@
       rgba = rescale(rgba, options);
     if (options.autoCrop || options.autoCropCenter)
       rgba = autoCrop(rgba, options);
-    
+
 
     if ("string"!=typeof options.diffusion)
       options.diffusion = "none";
@@ -551,7 +551,7 @@
           // Write preview
           var cr = fmt.toRGBA(c, palette);
           if (c===transparentCol)
-            cr = ((((x>>2)^(y>>2))&1)?0xFFFFFF:0); // pixel pattern
+            cr = ((((x>>2)^(y>>2))&1)?0xCCCCCC:0x555555); // pixel pattern
           //var oa = cr>>>24; - ignore alpha
           var or = (cr>>16)&255;
           var og = (cr>>8)&255;
@@ -653,7 +653,7 @@
       for (var x=0; x<options.width; x++) {
         var na = rgba[n*4+3]/255;
         var a = 1-na;
-        var chequerboard = ((((x>>2)^(y>>2))&1)?0xFFFFFF:0);
+        var chequerboard = ((((x>>2)^(y>>2))&1)?0xCC:0x55);
         rgba[n*4]   = rgba[n*4]*na + chequerboard*a;
         rgba[n*4+1] = rgba[n*4+1]*na + chequerboard*a;
         rgba[n*4+2] = rgba[n*4+2]*na + chequerboard*a;
@@ -745,7 +745,7 @@
       y1 = Math.min(y1, (options.height-1)-y2);
       x2 = (options.width-1)-x1;
       y2 = (options.height-1)-y1;
-    } 
+    }
     // ok, crop!
     var w = 1+x2-x1;
     var h = 1+y2-y1;
@@ -772,7 +772,7 @@
       for (let x=0;x<dstw;x++) {
         let oldx = x / scale;
         let oldy = y / scale;
-        let ix = Math.floor(oldx), ax=oldx-ix; 
+        let ix = Math.floor(oldx), ax=oldx-ix;
         let iy = Math.floor(oldy), ay=oldy-iy;
         let ca = blendRGBA8888(src[ix+(srcw*iy)], src[ix+1+(srcw*iy)], ax);
         let cb = blendRGBA8888(src[ix+(srcw*(iy+1))], src[ix+1+(srcw*(iy+1))], ax);
