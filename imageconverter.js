@@ -932,6 +932,8 @@
     setOutputOptions : setOutputOptions,
 
     stringToImageHTML : stringToImageHTML,
-    stringToImageURL : stringToImageURL
+    stringToImageURL : stringToImageURL,
+
+    setHeatShrink : hs => heatshrink=hs,
   };
 }));
