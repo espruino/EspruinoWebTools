@@ -91,6 +91,7 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.19: Add this.removeAllListeners
 1.18: Add connection.on("line"...) event, export parseRJSON, handle 'NaN' in RJSON
 1.17: Work around Linux Web Bluetooth Bug (connect-disconnect-connect to same device)
 1.16: Misc reliability improvements (if connection fails during write or if BLE Characteristics reused)
@@ -405,6 +406,7 @@ To do:
     on(evt,cb) { let e = "on"+evt; if (!this[e]) this[e]=[]; this[e].push(cb); } // on only works with a single handler
     emit(evt,data1,data2) { let e = "on"+evt;  if (this[e]) this[e].forEach(fn=>fn(data1,data2)); }
     removeListener(evt,callback) { let e = "on"+evt;  if (this[e]) this[e]=this[e].filter(fn=>fn!=callback); }
+    removeAllListeners(evt) { let e = "on"+evt;  delete this[e]; }
     // on("open", () => ... ) connection opened
     // on("close", () => ... ) connection closed
     // on("data", (data) => ... ) when data is received (as string)
@@ -1286,7 +1288,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.18",
+    version : "1.19",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
@@ -1317,7 +1319,7 @@ To do:
       connect(options).then(callback, err => callback(null,err));
       return connection;
     },
-    /// Write to a device and callback when the data is written (returns promise, or can take callback).  Creates a connection if it doesn't exist
+    /// Write to a device and callback when the data is written (returns promise, or can take callback).  Creates a connection if it doesn't exist. NOTE: If the device is constantly sending and we're not waiting for a newline, this can take up to UART.timeoutMax to return
     write : write, // write(string, callback, callbackForNewline) -> Promise
     /// Evaluate an expression and call cb with the result (returns promise, or can take callback). Creates a connection if it doesn't exist
     eval : evaluate, // eval(expr_as_string, callback) -> Promise
