@@ -351,7 +351,7 @@
     var dr = Math.round(ar*namt + br*amt);
     var dg = Math.round(ag*namt + bg*amt);
     var db = Math.round(ab*namt + bb*amt);
-    return (da<<24)|(dr<<16)|(dg<<16)|db;
+    return (da<<24)|(dr<<16)|(dg<<8)|db;
   }
 
   /*
@@ -364,7 +364,7 @@
     if (!options.width) throw new Error("No Width specified");
     if (!options.height) throw new Error("No Height specified");
 
-    if (options.scale)
+    if (options.scale && options.scale!=1)
       rgba = rescale(rgba, options);
     if (options.autoCrop || options.autoCropCenter)
       rgba = autoCrop(rgba, options);
