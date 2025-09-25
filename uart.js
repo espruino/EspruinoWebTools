@@ -91,6 +91,7 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.20: Added options as 3rd arg to UART.write instead of just callbackNewline, added noWait option
 1.19: Add this.removeAllListeners
 1.18: Add connection.on("line"...) event, export parseRJSON, handle 'NaN' in RJSON
 1.17: Work around Linux Web Bluetooth Bug (connect-disconnect-connect to same device)
@@ -391,7 +392,7 @@ To do:
     var q = queue.shift();
     log(3,"Executing "+JSON.stringify(q)+" from queue");
     if (q.type=="eval") uart.eval(q.expr, q.cb).then(q.resolve, q.reject);
-    else if (q.type=="write") uart.write(q.data, q.callback, q.callbackNewline).then(q.resolve, q.reject);
+    else if (q.type=="write") uart.write(q.data, q.callback, q.options).then(q.resolve, q.reject);
     else log(1,"Unknown queue item "+JSON.stringify(q));
   }
 
@@ -585,7 +586,6 @@ To do:
             return;
           }
           var txItem = connection.txDataQueue[0];
-          uart.writeProgress(txItem.maxLength - (txItem.data?txItem.data.length:0), txItem.maxLength);
           connection.updateProgress(txItem.maxLength - (txItem.data?txItem.data.length:0), txItem.maxLength);
           if (txItem.data.length <= connection.chunkSize) {
             chunk = txItem.data;
@@ -716,7 +716,7 @@ To do:
       let connection = this;
       let packetCount = 0, packetTotal = Math.ceil(data.length/CHUNK)+1;
       connection.progressAmt = 0;
-      connection.progressMax = data.length;
+      connection.progressMax = 100 + data.length;
       // always ack the FILE_SEND
       progressHandler(0, packetTotal);
       return connection.espruinoSendPacket("FILE_SEND",JSON.stringify(options)).then(sendData, err=> {
@@ -726,7 +726,7 @@ To do:
       });
       // but if noACK don't ack for data
       function sendData() {
-        connection.progressAmt += CHUNK;
+        connection.progressAmt += connection.progressAmt?CHUNK:100;
         progressHandler(++packetCount, packetTotal);
         if (data.length==0) {
           connection.progressAmt = 0;
@@ -1189,16 +1189,24 @@ To do:
   }
   // ======================================================================
   /* convenience function... Write data, call the callback with data:
-       callbackNewline = false => if no new data received for ~0.2 sec
-       callbackNewline = true => after a newline */
-  function write(data, callback, callbackNewline) {
+       options = true/false => same as setting {waitNewline:true/false}
+       options.waitNewline     = false => return if no new data received for ~0.2 sec
+                                 true => return only after a newline
+       options.noWait : bool => don't wait for any response, just return immediately
+  */
+  function write(data, callback, options) {
+    if ("boolean" == typeof options)
+      options = {waitNewline:options};
+    else if (options === undefined)
+      options = {};
+
     if (isBusy)
-      return pushToQueue({type:"write", data:data, callback:callback, callbackNewline:callbackNewline});
+      return pushToQueue({type:"write", data:data, callback:callback, options:options});
 
     return new Promise((resolve,reject) => {
       var cbTimeout;
       function onWritten() {
-        if (callbackNewline) {
+        if (options.waitNewline) {
           connection.cb = function(d) {
             // if we hadn't got a newline this time (even if we had one before)
             // then ignore it (https://github.com/espruino/BangleApps/issues/3771)
@@ -1222,9 +1230,12 @@ To do:
         }
         // wait for any received data if we have a callback...
         var maxTime = uart.timeoutMax; // Max time we wait in total, even if getting data
-        var dataWaitTime = callbackNewline ? uart.timeoutNewline : uart.timeoutNormal;
+        var dataWaitTime = options.waitNewline ? uart.timeoutNewline : uart.timeoutNormal;
         var maxDataTime = dataWaitTime; // max time we wait after having received data
         const POLLINTERVAL = 100;
+        if (options.noWait) { // just return immediately, as soon as written
+          maxTime = dataWaitTime = maxDataTime = 0;
+        }
         cbTimeout = setTimeout(function timeout() {
           cbTimeout = undefined;
           if (connection===undefined) {
@@ -1238,14 +1249,14 @@ To do:
             cbTimeout = setTimeout(timeout, 100);
           } else {
             connection.cb = undefined;
-            if (callbackNewline)
+            if (options.waitNewline)
               log(2, "write waiting for newline timed out");
             if (callback)
               callback(connection.received);
             resolve(connection.received);
             isBusy = false;
-            handleQueue();
             connection.received = "";
+            handleQueue();
           }
           connection.hadData = false;
         }, 100);
@@ -1282,13 +1293,13 @@ To do:
         if (cb) cb(null, err);
         return Promise.reject(err);
       }
-    }, true/*callbackNewline*/);
+    }, {waitNewline:true});
   }
 
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.19",
+    version : "1.20",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
