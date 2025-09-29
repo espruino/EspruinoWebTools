@@ -78,6 +78,13 @@ function bitsToBytes(bits, bpp) {
         byte |= bits[i+b] << (6-b*2);
       bytes.push(byte);
     }
+  } else if (bpp==4) {
+    for (let i=0;i<bits.length;i+=2) {
+      let byte = 0;
+      for (let b=0;b<2;b++)
+        byte |= bits[i+b] << (4-b*4);
+      bytes.push(byte);
+    }
   } else throw "unknown bpp";
   return bytes;
 }
