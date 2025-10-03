@@ -36,6 +36,12 @@ including echo and linefeed from the REPL so you may want to send
     alert(d);
   });
 
+You can also specify options, eg to respond as soon as a newline is received:
+
+  UART.write("\x10Bluetooth.println(1+2)\n", {waitNewline:true}).then(function(d) {
+    alert(d);
+  });
+
 Or more advanced usage with control of the connection
 - allows multiple connections
 
@@ -91,6 +97,8 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.21: Fixed double-reporting of progress start events
+      Allowed `UART.write(data, options)`, where before we needed `UART.write(data, callback, options)`
 1.20: Added options as 3rd arg to UART.write instead of just callbackNewline, added noWait option
 1.19: Add this.removeAllListeners
 1.18: Add connection.on("line"...) event, export parseRJSON, handle 'NaN' in RJSON
@@ -581,7 +589,6 @@ To do:
           }
           var chunk;
           if (!connection.txDataQueue.length) {
-            uart.writeProgress();
             connection.updateProgress();
             return;
           }
@@ -612,7 +619,6 @@ To do:
             promise.then(writeChunk); // if txItem.callback() returned a promise, wait until it completes before continuing
           }, function(error) {
             log(1, 'SEND ERROR: ' + error);
-            uart.writeProgress();
             connection.updateProgress();
             connection.txDataQueue = [];
             connection.close();
@@ -1188,13 +1194,20 @@ To do:
     });
   }
   // ======================================================================
-  /* convenience function... Write data, call the callback with data:
+  /* convenience function... Write data, call the callback(and/or promise) with data:
+      write(data, callback, options) => Promise
+      write(data, options) => Promise
+
        options = true/false => same as setting {waitNewline:true/false}
        options.waitNewline     = false => return if no new data received for ~0.2 sec
                                  true => return only after a newline
        options.noWait : bool => don't wait for any response, just return immediately
   */
   function write(data, callback, options) {
+    if ("object" == typeof callback) {
+      options = callback;
+      callback = undefined;
+    }      
     if ("boolean" == typeof options)
       options = {waitNewline:options};
     else if (options === undefined)
@@ -1299,7 +1312,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.20",
+    version : "1.21",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
