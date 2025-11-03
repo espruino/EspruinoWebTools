@@ -97,6 +97,8 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.22: Fix issue where a .write call that falls at just the right time can cause 
+       "Cannot read properties of undefined (reading 'length')"
 1.21: Fixed double-reporting of progress start events
       Allowed `UART.write(data, options)`, where before we needed `UART.write(data, callback, options)`
 1.20: Added options as 3rd arg to UART.write instead of just callbackNewline, added noWait option
@@ -587,12 +589,13 @@ To do:
             setTimeout(writeChunk, 50);
             return;
           }
-          var chunk;
-          if (!connection.txDataQueue.length) {
+          if (!connection.txDataQueue.length) { // we're finished!
+            connection.txInProgress = false;
             connection.updateProgress();
             return;
           }
-          var txItem = connection.txDataQueue[0];
+          connection.txInProgress = true;
+          var chunk, txItem = connection.txDataQueue[0];
           connection.updateProgress(txItem.maxLength - (txItem.data?txItem.data.length:0), txItem.maxLength);
           if (txItem.data.length <= connection.chunkSize) {
             chunk = txItem.data;
@@ -601,7 +604,6 @@ To do:
             chunk = txItem.data.substr(0,connection.chunkSize);
             txItem.data = txItem.data.substr(connection.chunkSize);
           }
-          connection.txInProgress = true;
           log(2, "Sending "+ JSON.stringify(chunk));
           connection.writeLowLevel(chunk).then(function() {
             log(3, "Sent");
@@ -615,7 +617,6 @@ To do:
             }
             if (!(promise instanceof Promise))
               promise = Promise.resolve();
-            connection.txInProgress = false;
             promise.then(writeChunk); // if txItem.callback() returned a promise, wait until it completes before continuing
           }, function(error) {
             log(1, 'SEND ERROR: ' + error);
@@ -1312,7 +1313,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.21",
+    version : "1.22",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
