@@ -97,6 +97,7 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.24: Ensure connection.espruinoEval timeout is propagated to the initial sendPacket call
 1.23: Support sending compressed files supported on (2v29)
       connection progress callback uses bytes, not packets
 1.22: Fix issue where a .write call that falls at just the right time can cause 
@@ -850,12 +851,13 @@ To do:
         }
         connection.parsePackets = true;
         connection.on("packet", onPacket);
+        let timeoutDelay = options.timeout || 1000;
         let timeout = setTimeout(() => {
           timeout = undefined;
           cleanup();
           reject("espruinoEval Timeout");
-        }, options.timeout || 1000);
-        connection.espruinoSendPacket("EVAL",expr,{noACK:options.stmFix}).then(()=>{
+        }, timeoutDelay);
+        connection.espruinoSendPacket("EVAL",expr,{noACK:options.stmFix, timeout:timeoutDelay}).then(()=>{
           // resolved/rejected with 'packet' event or timeout
           if (options.stmFix)
             prodInterval = setInterval(function() {
@@ -1331,7 +1333,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.23",
+    version : "1.24",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
