@@ -890,7 +890,7 @@ To do:
           )
         return "Chrome <56 in Windows has navigator.bluetooth but it's not implemented properly";
       if (window && window.location && window.location.protocol=="http:" &&
-          window.location.hostname!="localhost")
+          window.location.hostname!="localhost" && window.location.hostname!="127.0.0.1")
         return "Serving off HTTP (not HTTPS) - Web Bluetooth not enabled";
       if (navigator.bluetooth) return true;
       var iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
