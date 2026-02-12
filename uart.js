@@ -97,6 +97,7 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.25: Minor improvements to progress handling
 1.24: Ensure connection.espruinoEval timeout is propagated to the initial sendPacket call
 1.23: Support sending compressed files supported on (2v29)
       connection progress callback uses bytes, not packets
@@ -610,6 +611,7 @@ To do:
           log(2, "Sending "+ JSON.stringify(chunk));
           connection.writeLowLevel(chunk).then(function() {
             log(3, "Sent");
+            connection.updateProgress(txItem.maxLength, txItem.maxLength);
             let promise = undefined;
             if (!txItem.data) {
               connection.txDataQueue.shift(); // remove this element
@@ -752,13 +754,14 @@ To do:
           do { // try compressing progressively smaller chunks until we can get in our CHUNK size
             chunk = chunk>>1; // halve it
             packetDecompressed = data.substring(0, chunk); // the data we're planning to compress
-            packet = Espruino.Core.Utils.arrayBufferToString(hs.compress(new Uint8Array(Espruino.Core.Utils.stringToArrayBuffer(packetDecompressed))).buffer);          
+            packet = Espruino.Core.Utils.arrayBufferToString(hs.compress(new Uint8Array(Espruino.Core.Utils.stringToArrayBuffer(packetDecompressed))).buffer);
           } while (packet.length>CHUNK);
           data = data.substring(chunk);
           connection.progressAmt += packetDecompressed.length;
         } else {
-          data = data.substring(CHUNK);
-          connection.progressAmt += CHUNK;
+          let sent = Math.min(CHUNK, data.length);
+          data = data.substring(sent);
+          connection.progressAmt += sent;
         }
         progressHandler(connection.progressAmt, connection.progressMax);
         return connection.espruinoSendPacket("DATA", packet, packetOptions).then(sendData, err=> {
@@ -1333,7 +1336,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.24",
+    version : "1.25",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
