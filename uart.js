@@ -97,11 +97,12 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.26: Ensure 'connection.endpoint' is set correctly even when there's only one connection type (so no menu shown)
 1.25: Minor improvements to progress handling
 1.24: Ensure connection.espruinoEval timeout is propagated to the initial sendPacket call
 1.23: Support sending compressed files supported on (2v29)
       connection progress callback uses bytes, not packets
-1.22: Fix issue where a .write call that falls at just the right time can cause 
+1.22: Fix issue where a .write call that falls at just the right time can cause
        "Cannot read properties of undefined (reading 'length')"
 1.21: Fixed double-reporting of progress start events
       Allowed `UART.write(data, options)`, where before we needed `UART.write(data, callback, options)`
@@ -1163,6 +1164,7 @@ To do:
         var supported = endpoint.isSupported();
         if (supported!==true)
           return reject(endpoint.name+" is not supported on this platform: "+supported);
+        connection.endpoint = endpoint;
         return endpoint.connect(connection, options).then(resolve, reject);
       }
 
@@ -1231,7 +1233,7 @@ To do:
     if ("object" == typeof callback) {
       options = callback;
       callback = undefined;
-    }      
+    }
     if ("boolean" == typeof options)
       options = {waitNewline:options};
     else if (options === undefined)
@@ -1336,7 +1338,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.25",
+    version : "1.26",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
