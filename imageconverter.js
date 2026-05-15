@@ -68,8 +68,6 @@
       bpp:2,name:"2 bit greyscale",
       fromRGBA:function(r,g,b) {
         var c = (r+g+b) / 3;
-        c += 31; // rounding
-        if (c>255)c=255;
         return c>>6;
       },toRGBA:function(c) {
         c = c&3;
@@ -81,8 +79,6 @@
       bpp:4,name:"4 bit greyscale",
       fromRGBA:function(r,g,b) {
         var c = (r+g+b) / 3;
-        c += 7; // rounding
-        if (c>255)c=255;
         return c>>4;
       },toRGBA:function(c) {
         c = c&15;
