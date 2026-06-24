@@ -19,6 +19,7 @@
 1v01: Added option to dither transparency
       Added Atkinson Dithering option
       Allow transparency even when all palette entries are used
+      Add stringToRGBA to allow decoding outside of browser
 */
   //------------------------------------------
   const PALETTE = {
@@ -373,7 +374,13 @@
         this.a*v
       );
     }
-
+    toRGBA32() {
+      let dr = clip(Math.round(this.r));
+      let dg = clip(Math.round(this.g));
+      let db = clip(Math.round(this.b));
+      let da = clip(Math.round(this.a));
+      return (da<<24)|(dr<<16)|(dg<<8)|db;
+    }
   }
 
   // compare two RGB888 colors and give a squared distance value
@@ -491,18 +498,20 @@
             row1[ex].inc(new RGBA(
               Math.random()*48 - 24,
               Math.random()*48 - 24,
+              Math.random()*48 - 24,
               Math.random()*48 - 24));
           } else if (options.diffusion == "random2") {
             row1[ex].inc(new RGBA(
               Math.random()*128 - 64,
               Math.random()*128 - 64,
+              Math.random()*128 - 64,
               Math.random()*128 - 64));
           } else if (options.diffusion == "bayer2") {
             let th = DITHER.BAYER2[x&1][y&1]*64 - 96;
-            row1[ex].inc(new RGBA(th,th,th,0));
+            row1[ex].inc(new RGBA(th,th,th,th));
           } else if (options.diffusion == "bayer4") {
             let th = DITHER.BAYER4[x&3][y&3]*16 - 96;
-            row1[ex].inc(new RGBA(th,th,th,0));
+            row1[ex].inc(new RGBA(th,th,th,th));
           } if (options.diffusion == "comic") {
             row1[ex].inc(new RGBA(
               DITHER.COMICR[x&7][y&7]*3 + Math.random()*24 - 12,
@@ -900,8 +909,15 @@
   /* Decode an Espruino image string into a URL, return undefined if it's not valid.
   options =  {
     transparent : bool // should the image be transparent, or just chequered where transparent?
-  } */
-  function stringToImageURL(data, options) {
+  }
+
+  returns {
+    width : int,
+    height : int,
+    rgba : new Uint8Array()
+  }
+  */
+  function stringToRGBA(data, options) {
     options = options||{};
     var p = 0;
     var width = 0|data.charCodeAt(p++);
@@ -927,9 +943,7 @@
     var canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
-    var ctx = canvas.getContext("2d");
-    var imageData = ctx.getImageData(0, 0, width, height);
-    var rgba = imageData.data;
+    var rgba = new Uint8Array(4*width*height);
     var no = 0;
     var nibits = 0;
     var nidata = 0;
@@ -950,6 +964,25 @@
     }
     if (!options.transparent)
       RGBAtoCheckerboard(rgba, {width:width, height:height});
+    return {
+      width:width,
+      height:height,
+      rgba:rgba
+    };
+  }
+
+  /* Decode an Espruino image string into a URL, return undefined if it's not valid.
+  options =  {
+    transparent : bool // should the image be transparent, or just chequered where transparent?
+  } */
+  function stringToImageURL(data, options) {
+    var img = stringToRGBA(data, options);
+    var canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    var ctx = canvas.getContext("2d");
+    var imageData = ctx.getImageData(0, 0, img.width, img.height);
+    imageData.data.set(img.rgba);
     ctx.putImageData(imageData,0,0);
     return canvas.toDataURL();
   }
@@ -989,6 +1022,7 @@
     setDiffusionOptions : setDiffusionOptions,
     setOutputOptions : setOutputOptions,
 
+    stringToRGBA : stringToRGBA,
     stringToImageHTML : stringToImageHTML,
     stringToImageURL : stringToImageURL,
 
