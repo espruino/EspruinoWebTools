@@ -97,6 +97,7 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.27: Avoid stringifying characteristics for log messages (minimal use, and causes failures in Bluefy)
 1.26: Ensure 'connection.endpoint' is set correctly even when there's only one connection type (so no menu shown)
 1.25: Minor improvements to progress handling
 1.24: Ensure connection.espruinoEval timeout is propagated to the initial sendPacket call
@@ -970,14 +971,14 @@ To do:
         return btService.getCharacteristic(NORDIC_RX);
       }).then(function (characteristic) {
         rxCharacteristic = characteristic;
-        log(2, "RX characteristic:"+JSON.stringify(rxCharacteristic));
+        log(2, "Got RX characteristic");
         rxCharacteristic.addEventListener('characteristicvaluechanged', bleRxListener);
         return rxCharacteristic.startNotifications();
       }).then(function() {
         return btService.getCharacteristic(NORDIC_TX);
       }).then(function (characteristic) {
         txCharacteristic = characteristic;
-        log(2, "TX characteristic:"+JSON.stringify(txCharacteristic));
+        log(2, "Got TX characteristic");
       }).then(function() {
         connection.openHandler();
         isBusy = false;
@@ -1338,7 +1339,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.26",
+    version : "1.27",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
