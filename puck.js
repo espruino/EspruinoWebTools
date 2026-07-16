@@ -51,6 +51,7 @@ Or more advanced usage with control of the connection
 ChangeLog:
 
 ...
+1.03: Avoid stringifying characteristics for log messages (minimal use, and causes failures in Bluefy)
 1.02: Puck.write/eval now wait until they have received data with a newline in (if requested)
       and return the LAST received line, rather than the first (as before)
       Added configurable timeouts for write/etc
@@ -248,7 +249,7 @@ ChangeLog:
         return btService.getCharacteristic(NORDIC_RX);
       }).then(function (characteristic) {
         rxCharacteristic = characteristic;
-        log(2, "RX characteristic:"+JSON.stringify(rxCharacteristic));
+        log(2, "Got RX characteristic");
         rxCharacteristic.addEventListener('characteristicvaluechanged', function(event) {
           var dataview = event.target.value;
           var data = ab2str(dataview.buffer);
@@ -282,7 +283,7 @@ ChangeLog:
         return btService.getCharacteristic(NORDIC_TX);
       }).then(function (characteristic) {
         txCharacteristic = characteristic;
-        log(2, "TX characteristic:"+JSON.stringify(txCharacteristic));
+        log(2, "Got TX characteristic");
       }).then(function() {
         connection.txInProgress = false;
         connection.isOpen = true;
@@ -406,7 +407,7 @@ ChangeLog:
   // ----------------------------------------------------------
 
   var puck = {
-    version : "1.02",
+    version : "1.03",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /** When we receive more than 20 bytes, should we increase the chunk size we use
