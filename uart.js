@@ -756,7 +756,7 @@ To do:
           do { // try compressing progressively smaller chunks until we can get in our CHUNK size
             chunk = chunk>>1; // halve it
             packetDecompressed = data.substring(0, chunk); // the data we're planning to compress
-            packet = Espruino.Core.Utils.arrayBufferToString(hs.compress(new Uint8Array(Espruino.Core.Utils.stringToArrayBuffer(packetDecompressed))).buffer);
+            packet = ab2str(hs.compress(new Uint8Array(str2ab(packetDecompressed))).buffer);
           } while (packet.length>CHUNK);
           data = data.substring(chunk);
           connection.progressAmt += packetDecompressed.length;

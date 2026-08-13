@@ -1,13 +1,27 @@
 {
   "name": "espruinowebtools",
-  "version": "0.02",
+  "version": "0.2.0",
   "description": "Lightweight tools for use on websites with Espruino-based microcontrollers",
-  "author": "Gordon Williams <gw@pur3.co.uk> (http://espruino.com)",
-  "license": "Apache-2.0",
+  "keywords": [
+    "espruino",
+    "microcontroller",
+    "image"
+  ],
+  "homepage": "https://github.com/espruino/EspruinoWebTools#readme",
   "bugs": {
     "url": "https://github.com/espruino/EspruinoWebTools/issues"
   },
-  "homepage": "https://github.com/espruino/EspruinoWebTools#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/espruino/EspruinoWebTools.git"
+  },
+  "license": "Apache-2.0",
+  "author": "Gordon Williams <gw@pur3.co.uk> (http://espruino.com)",
+  "type": "commonjs",
+  "main": "index.js",
+  "directories": {
+    "example": "examples"
+  },
   "scripts": {
     "lint": "eslint uart.js puck.js imageconverter.js fontconverter.js"
   },

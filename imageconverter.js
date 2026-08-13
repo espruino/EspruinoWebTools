@@ -468,24 +468,24 @@
 
     function readImage(fmt) {
       var pixels = new Int32Array(options.width*options.height);
-      var n = 0;
+      var x,y,n = 0;
       // error diffusion buffers (current row / next row)
       var row1 = new Array(options.width+3),  // current row
           row2 = new Array(options.width+3),  // next row
           row3 = new Array(options.width+3);  // row after
-      for (var x=0; x<row1.length; x++) {
+      for (x=0; x<row1.length; x++) {
         row1[x] = new RGBA();
         row2[x] = new RGBA();
         row3[x] = new RGBA();
       }
 
-      for (var y=0; y<options.height; y++) {
+      for (y=0; y<options.height; y++) {
         // error diffusion: move next row errors into current row, clear next row
         var t;
         t = row1; row1 = row2; row2 = row3; row3 = t;
         row3.forEach(v => v.zero());
         // for each row...
-        for (var x=0; x<options.width; x++) {
+        for (x=0; x<options.width; x++) {
           var ex = x+1; // offset by 1 so we always have space at edges in error buffers
           var r = rgba[n*4];
           var g = rgba[n*4+1];
