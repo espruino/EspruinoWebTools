@@ -97,6 +97,7 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.28: Ensure Web Serial connections use a higher chunk size
 1.27: Avoid stringifying characteristics for log messages (minimal use, and causes failures in Bluefy)
 1.26: Ensure 'connection.endpoint' is set correctly even when there's only one connection type (so no menu shown)
 1.25: Minor improvements to progress handling
@@ -1013,7 +1014,7 @@ To do:
       function disconnected() {
         connection.closeHandler();
       }
-
+      connection.chunkSize = 1024; // force a higher chunk size
       connection.closeLowLevel = function(callback) {
         if (writer) {
           writer.close();
@@ -1339,7 +1340,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.27",
+    version : "1.28",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
