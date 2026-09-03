@@ -214,7 +214,7 @@
       }
     },
     "epaper4":{
-      bpp:2,name:"ePaper: 2 bit (4 color) BWRY",
+      bpp:2,name:"ePaper: 2 bit (4 color) BWYR",
       fromRGBA:function(r,g,b,a) {
         return PALETTE.lookup(PALETTE.EPAPER4,r,g,b,a, undefined /* no transparency */);
       },toRGBA:function(c) {
