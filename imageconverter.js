@@ -14,8 +14,9 @@
 }(typeof self !== 'undefined' ? self : this, function (heatshrink) {
 
   //------------------------------------------
-  const VERSION = 1.03;
+  const VERSION = 1.04;
 /*
+1v04: Add rotate option to rotate image by 90 degrees
 1v03: Automatically disable transparency if there are no transparent pixels
 1v02: Fix for stringToImage* with invalid image
 1v01: Added option to dither transparency
@@ -434,6 +435,9 @@
 
     if (options.scale && options.scale!=1)
       rgba = rescale(rgba, options);
+
+    if (options.rotate)
+      rgba = rotate(rgba, options);
 
     if ("string"!=typeof options.diffusion)
       options.diffusion = "none";
@@ -856,6 +860,26 @@
     return cropped;
   }
 
+  /* attempt to rotate the image - right now we just do this by 90 degrees*/
+  function rotate(rgba, options) {
+    let rotate = options.rotate;
+    let srcw = options.width;
+    let dstw = options.height;
+    let dsth = options.width;
+    let src = new Uint32Array(rgba.buffer);
+    let dst = new Uint32Array(dstw*dsth);
+    for (let y=0;y<dsth;y++)
+      for (let x=0;x<dstw;x++) {
+        dst[x+y*dstw] = src[y+(srcw*x)];
+      }
+    options.width = dstw;
+    options.height = dsth;
+    let rotated = new Uint8ClampedArray(dst.buffer);
+    if (options.rgbaOut) options.rgbaOut = rotated;
+    return rotated;
+  }
+
+
   /* RGBAtoString options, PLUS:
 
   updateCanvas: update canvas with the quantized image
@@ -910,7 +934,8 @@
       inverted : "bool",
       alphaToColor : "bool",
       autoCrop : "bool", // whether to crop the image's borders or not
-      autoCropCenter : "bool"
+      autoCropCenter : "bool",
+      rotate : "bool" // rotate by 90 degrees?
     }
   }
 

@@ -14,6 +14,7 @@
    <input type="checkbox" id="transparentDither" onchange="imageLoaded()">Dither Transparency?</input><br/>
    <input type="checkbox" id="inverted" onchange="imageLoaded()"> Inverted?</input><br/>
    <input type="checkbox" id="autoCrop" onchange="imageLoaded()"> Crop?</input><br/>
+   <input type="checkbox" id="rotate" onchange="imageLoaded()"> Rotate?</input><br/>
    Diffusion: <select id="diffusion" onchange="imageLoaded()"></select><br/>
 
    Brightness: <span id="brightnessv"></span>
@@ -50,6 +51,7 @@
        options.transparentDither = document.getElementById("transparentDither").checked;
        options.inverted = document.getElementById("inverted").checked;
        options.autoCrop = document.getElementById("autoCrop").checked;
+       options.rotate = document.getElementById("rotate").checked?1:0;
        options.brightness = 0|document.getElementById("brightness").value;
        document.getElementById("brightnessv").innerText = options.brightness;
        options.contrast = 0|document.getElementById("contrast").value;
