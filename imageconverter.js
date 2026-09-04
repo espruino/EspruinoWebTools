@@ -870,7 +870,7 @@
     let dst = new Uint32Array(dstw*dsth);
     for (let y=0;y<dsth;y++)
       for (let x=0;x<dstw;x++) {
-        dst[x+y*dstw] = src[y+(srcw*x)];
+        dst[x+y*dstw] = src[y+(srcw*(dstw-(x+1)))];
       }
     options.width = dstw;
     options.height = dsth;
