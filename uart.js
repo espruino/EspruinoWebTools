@@ -97,6 +97,8 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.29: Use queueMicrotask rather than setTimeout(...,0) to resolve packet promises,
+      as background tabs clamp timers to 1s and stall file transfers
 1.28: Ensure Web Serial connections use a higher chunk size
 1.27: Avoid stringifying characteristics for log messages (minimal use, and causes failures in Bluefy)
 1.26: Ensure 'connection.endpoint' is set correctly even when there's only one connection type (so no menu shown)
@@ -669,11 +671,11 @@ To do:
         }
         function onACK(ok) {
           tidy();
-          setTimeout(resolve,0);
+          queueMicrotask(resolve);
         }
         function onNAK(ok) {
           tidy();
-          setTimeout(reject,0,"NAK while sending packet");
+          queueMicrotask(() => reject("NAK while sending packet"));
         }
         if (!options.noACK) {
           connection.parsePackets = true;
@@ -684,7 +686,7 @@ To do:
         connection.write(String.fromCharCode(/*DLE*/16,/*SOH*/1,(flags>>8)&0xFF,flags&0xFF)+data, function() {
           // write complete
           if (options.noACK) {
-            setTimeout(resolve,0); // if not listening for acks, just resolve immediately
+            queueMicrotask(resolve); // if not listening for acks, just resolve immediately
           } else {
             timeout = setTimeout(function() {
               timeout = undefined;
@@ -808,7 +810,7 @@ To do:
           if (type!=0x8000) return; // ignore things that are not DATA packet
           if (data.length==0) { // 0 length packet = EOF
             cleanup();
-            setTimeout(resolve,0,fileContents);
+            queueMicrotask(resolve.bind(null, fileContents));
           } else {
             fileContents += data;
             options.progress(fileContents.length);
@@ -853,7 +855,7 @@ To do:
         function onPacket(type,data) {
           if (type!=0) return; // ignore things that are not a response
           cleanup();
-          setTimeout(resolve,0, parseRJSON(data));
+          queueMicrotask(resolve.bind(null, parseRJSON(data)));
         }
         connection.parsePackets = true;
         connection.on("packet", onPacket);
