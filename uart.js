@@ -1342,7 +1342,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.28",
+    version : "1.29",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
