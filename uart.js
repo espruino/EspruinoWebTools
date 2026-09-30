@@ -97,6 +97,7 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.30: EspruinoSendFile now attempts to resend packets that don't get acknowledged
 1.29: Use queueMicrotask rather than setTimeout(...,0) to resolve packet promises,
       as background tabs clamp timers to 1s and stall file transfers
 1.28: Ensure Web Serial connections use a higher chunk size
@@ -769,10 +770,16 @@ To do:
           connection.progressAmt += sent;
         }
         progressHandler(connection.progressAmt, connection.progressMax);
-        return connection.espruinoSendPacket("DATA", packet, packetOptions).then(sendData, err=> {
-          connection.progressAmt = 0;
-          connection.progressMax = 0;
-          throw err;
+        return connection.espruinoSendPacket("DATA", packet, packetOptions).then(sendData, err => {
+          log(1, "espruinoSendFile packet send failed - waiting 1s...");
+          return new Promise(resolve => setTimeout(resolve,1000)).then(() => {
+            log(1, "espruinoSendFile trying again");
+            return connection.espruinoSendPacket("DATA", packet, packetOptions);
+          }).then(sendData, err => {
+            connection.progressAmt = 0;
+            connection.progressMax = 0;
+            throw err;
+          });
         });
       }
     }
@@ -1342,7 +1349,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.29",
+    version : "1.30",
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
