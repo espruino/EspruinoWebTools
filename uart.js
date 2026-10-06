@@ -97,6 +97,8 @@ UART.getConnection().espruinoEval("1+2").then(res => console.log("=",res));
 ChangeLog:
 
 ...
+1.31: espruinoEval now has optional noParse argument to avoid parsing the result. 
+      Allow RJSON parsing of IDs - for instance espruinoEval('D0')
 1.30: EspruinoSendFile now attempts to resend packets that don't get acknowledged
 1.29: Use queueMicrotask rather than setTimeout(...,0) to resolve packet promises,
       as background tabs clamp timers to 1s and stall file transfers
@@ -370,6 +372,7 @@ To do:
           case "false" : tok = lex.next(); return false;
           case "null" : tok = lex.next(); return null;
           case "NaN" : tok = lex.next(); return NaN;
+          default: { let v = tok.value; tok = lex.next(); return v; } // eg a pin name in Espruino like 'D0' - just treat as a string
         }
         if (tok.str == "[") {
           tok = lex.next();
@@ -420,6 +423,7 @@ To do:
     if (uart.log) uart.log(level, s);
   }
 
+  const UART_VERSION = "1.31";
   /// Base connection class - BLE/Serial add writeLowLevel/closeLowLevel/etc on top of this
   class Connection {
     endpoint = undefined; // Set to the endpoint used for this connection - eg maybe endpoint.name=="Web Bluetooth"
@@ -839,6 +843,7 @@ To do:
     /* Send a JS expression to be evaluated on Espruino using using 2v25 packets.
         options = {
             timeout : int // milliseconds timeout (default=1000)
+            noParse : bool // if set, pass the text returned straight back rather than being parsed into a JS object
             stmFix : bool // if set, this works around an issue in Espruino STM32 2v24 and earlier where USB could get in a state where it only sent small chunks of data at a time
         }*/
     espruinoEval(expr, options) {
@@ -862,7 +867,7 @@ To do:
         function onPacket(type,data) {
           if (type!=0) return; // ignore things that are not a response
           cleanup();
-          queueMicrotask(resolve.bind(null, parseRJSON(data)));
+          queueMicrotask(resolve.bind(null, options.noParse ? data : parseRJSON(data)));
         }
         connection.parsePackets = true;
         connection.on("packet", onPacket);
@@ -1349,7 +1354,7 @@ To do:
   // ----------------------------------------------------------
 
   var uart = {
-    version : "1.30",
+    version : UART_VERSION,
     /// Are we writing debug information? 0 is no, 1 is some, 2 is more, 3 is all.
     debug : 1,
     /// Should we use flow control? Default is true
